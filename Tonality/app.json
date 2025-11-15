@@ -1,5 +1,6 @@
 {
   "expo": {
+    "owner": "spheno",
     "name": "Tonality",
     "slug": "Tonality",
     "version": "1.0.0",
@@ -19,7 +20,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.spheno.Tonality"
     },
     "web": {
       "output": "static",
@@ -43,6 +45,18 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "3371d0f9-af8d-41c1-9474-e917c8588d48"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/3371d0f9-af8d-41c1-9474-e917c8588d48"
     }
   }
 }
