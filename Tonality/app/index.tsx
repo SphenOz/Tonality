@@ -1,8 +1,10 @@
+import { tonalityContext } from "@/utils/tonalityContext";
 import { Button } from "@react-navigation/elements";
 import * as AuthSession from 'expo-auth-session';
+import { useRouter } from "expo-router";
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
-import React, { useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { Linking, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -10,8 +12,13 @@ WebBrowser.maybeCompleteAuthSession();
 
 export default function Index() {
 
+  const {profile, setProfile} = useContext(tonalityContext)!;
+
+  const router = useRouter();
+  function navHome() {
+    router.push("/home");
+  }
   const [token, setToken] = useState<string | null>(null);
-  const [profile, setProfile] = useState<any>(null);
 
 const REDIRECT_URI = "https://sphenoz.github.io/callback"; //Redirect Page, do not change.
 const CLIENT_ID = "dada8bee46da49d68928a05c68828cc4"; //Client ID from my Spotify Dev App
@@ -61,10 +68,13 @@ useEffect(() => {
     setToken(json.access_token);
   };
 
+  //The Logic is as such, there are two states for the application, cold (fresh start) and warm (already running).
+  //Linking.addEventListener adds a listener to catch a redirect when the app is already running (warm start).
+  //Linking.getInitialURL checks if the app was opened from a redirect (cold start).
   const sub = Linking.addEventListener('url', onUrl);
   Linking.getInitialURL().then((u) => {
   if (u) {
-    return onUrl({ url: u }); // returns Promise<void> or void
+    return onUrl({ url: u }); 
   }
 });
   return () => sub.remove();
@@ -80,6 +90,12 @@ async function fetchProfile(): Promise<any> {
     setProfile(profile);
     return profile;
 }
+
+useEffect(() => {
+    if (token) {
+        fetchProfile();
+    }
+}, [token]);
 
   return (
     <SafeAreaView
@@ -102,7 +118,7 @@ async function fetchProfile(): Promise<any> {
             </Text>
             <Button style={{marginTop: 50, backgroundColor: "#a8C3A0ff"}} onPress={() => promptAsync()}> Login with Spotify </Button>
             {/*Utilize Spotify API*/}
-            <Button style={{marginTop: 50, backgroundColor: "#a8C3A0ff"}} onPress={() => fetchProfile()}> Get My Profile </Button>
+            <Button style={{marginTop: 50, backgroundColor: "#a8C3A0ff"}} onPress={() => navHome()}> Go to Home </Button>
         </View>
        </View>
     </SafeAreaView>
