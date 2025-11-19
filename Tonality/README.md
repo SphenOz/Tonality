@@ -82,25 +82,7 @@ Planned backend technologies (not yet implemented in this repo):
 
 ---
 
-## How to demo for the mid-semester check-in
 
-1. **Home tab**
-    - Explain the concept: Tonality is a social music app for sharing and discovering tracks.
-    - If logged out, show the **"Connect with Spotify"** button and go through the login flow.
-    - Point out the quick cards for **Song of the Day** and **Weekly Polls**.
-    - Mention that the **friend activity feed** is currently mocked but represents the future social feed.
-
-2. **Song of the Day tab**
-    - If not connected, show how the screen asks the user to connect to Spotify.
-    - Once connected, show the generated **Song of the Day** based on Spotify top tracks.
-    - Tap **"Play on Spotify"** to demonstrate deep linking into Spotify.
-
-3. **Weekly Polls tab**
-    - Show the active poll and describe that it's currently powered by an in-memory **mock backend**.
-    - Cast a vote and show how the vote counts and percentages change and how your selection is highlighted.
-    - Explain that in the full version, votes and polls will be stored in a **FastAPI + MySQL** backend.
-
----
 
 ## Future work
 
