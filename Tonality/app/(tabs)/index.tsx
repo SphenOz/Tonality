@@ -1,16 +1,21 @@
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSpotifyAuth } from '../../hooks/useSpotifyAuth';
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import { fetchUserProfile } from '../../api/spotify';
 import { Ionicons } from '@expo/vector-icons';
 import { useTonalityAuth } from '../../hooks/useTonalityAuth';
+import { useTheme } from '../../context/ThemeContext';
+import type { Theme } from '../../context/ThemeContext';
 
 export default function HomeScreen() {
     const { token, promptAsync } = useSpotifyAuth();
-    const { logout: tonalityLogout } = useTonalityAuth();
+        const { user, isAuthenticated, loading } = useTonalityAuth();
+    const { theme } = useTheme();
+    const styles = useMemo(() => createStyles(theme), [theme]);
     const [profile, setProfile] = useState<any>(null);
+    const routerInstance = useRouter();
 
     useEffect(() => {
         if (token) {
@@ -22,16 +27,20 @@ export default function HomeScreen() {
         }
     }, [token]);
 
-    const handleLogout = async () => {
-        console.log("Logout button pressed");
-        try {
-            await tonalityLogout();
-            console.log("Tonality logout completed");
-            // Navigation is handled by app/_layout.tsx effect
-        } catch (error) {
-            console.error("Logout failed:", error);
+    useEffect(() => {
+        if (!loading && !isAuthenticated) {
+            console.log("HomeScreen: effect redirecting to login");
+            routerInstance.replace('/');
         }
-    };
+    }, [loading, isAuthenticated, routerInstance]);
+
+    if (loading) {
+        return null;
+    }
+
+    if (!isAuthenticated) {
+        return null;
+    }
 
     const handleConnect = () => {
         if (!token) {
@@ -40,11 +49,11 @@ export default function HomeScreen() {
     };
 
     const goToSongOfDay = () => {
-        router.push('/(tabs)/song-of-day');
+        routerInstance.push('/(tabs)/song-of-day');
     };
 
     const goToPolls = () => {
-        router.push('/(tabs)/polls');
+        routerInstance.push('/(tabs)/polls');
     };
 
     const isConnected = Boolean(token);
@@ -53,12 +62,16 @@ export default function HomeScreen() {
         <SafeAreaView style={styles.container}>
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 <View style={styles.header}>
+                    <View style={styles.headerBadge}>
+                        <Ionicons name="sparkles" size={14} color={theme.colors.accent} />
+                        <Text style={styles.headerBadgeText}>Good to see you, {user?.email?.split('@')[0] || 'friend'}</Text>
+                    </View>
                     <Text style={styles.appName}>Tonality</Text>
-                    <Text style={styles.tagline}>Share music. Discover together.</Text>
+                    <Text style={styles.tagline}>Symmetric social listening for every vibe.</Text>
 
                     {isConnected ? (
                         <View style={styles.connectedBadge}>
-                            <Ionicons name="musical-note" size={18} color="#1DB954" />
+                            <Ionicons name="musical-note" size={18} color={theme.colors.accent} />
                             <Text style={styles.connectedText}>
                                 Connected as {profile?.display_name || 'Spotify User'}
                             </Text>
@@ -72,8 +85,8 @@ export default function HomeScreen() {
 
                     {!isConnected && (
                         <Pressable style={styles.primaryButton} onPress={handleConnect}>
-                            <Ionicons name="musical-notes" size={24} color="white" />
-                            <Text style={styles.primaryButtonText}>Connect with Spotify</Text>
+                            <Ionicons name="link" size={20} color="#fff" />
+                            <Text style={styles.primaryButtonText}>Link Spotify to Tonality</Text>
                         </Pressable>
                     )}
                 </View>
@@ -84,7 +97,7 @@ export default function HomeScreen() {
                     <View style={styles.cardsRow}>
                         <Pressable style={styles.featureCard} onPress={goToSongOfDay}>
                             <View style={styles.featureIconCircle}>
-                                <Ionicons name="musical-notes" size={22} color="#ffffff" />
+                                <Ionicons name="musical-notes" size={22} color={theme.colors.text} />
                             </View>
                             <Text style={styles.featureTitle}>Song of the Day</Text>
                             <Text style={styles.featureSubtitle}>
@@ -94,7 +107,7 @@ export default function HomeScreen() {
 
                         <Pressable style={styles.featureCard} onPress={goToPolls}>
                             <View style={styles.featureIconCircle}>
-                                <Ionicons name="stats-chart" size={22} color="#ffffff" />
+                                <Ionicons name="stats-chart" size={22} color={theme.colors.text} />
                             </View>
                             <Text style={styles.featureTitle}>Weekly Polls</Text>
                             <Text style={styles.featureSubtitle}>
@@ -135,84 +148,92 @@ export default function HomeScreen() {
                     </Text>
                 </View>
 
-                {isConnected && (
-                    <Pressable style={styles.logoutButton} onPress={handleLogout}>
-                        <Ionicons name="log-out-outline" size={18} color="#FF6B6B" />
-                        <Text style={styles.logoutText}>Log out</Text>
-                    </Pressable>
-                )}
             </ScrollView>
         </SafeAreaView>
     );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: Theme) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#121212',
+        backgroundColor: theme.colors.background,
     },
     scrollContent: {
         padding: 24,
-        paddingBottom: 40,
+        paddingBottom: 64,
     },
     header: {
-        marginTop: 20,
+        marginTop: 8,
         marginBottom: 32,
-        alignItems: 'center', // Center align for symmetry
+        alignItems: 'center',
+        gap: 12,
+    },
+    headerBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 999,
+        backgroundColor: theme.colors.surface,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+    },
+    headerBadgeText: {
+        fontSize: 12,
+        color: theme.colors.text,
+        fontWeight: '600',
     },
     appName: {
-        fontSize: 32,
+        fontSize: 34,
         fontWeight: '800',
-        color: '#1DB954',
-        letterSpacing: 0.5,
+        color: theme.colors.text,
+        textAlign: 'center',
     },
     tagline: {
-        marginTop: 8,
+        marginTop: 4,
         fontSize: 16,
-        color: '#B3B3B3',
+        color: theme.colors.textMuted,
         textAlign: 'center',
     },
     connectedBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginTop: 20,
-        backgroundColor: 'rgba(29, 185, 84, 0.1)',
+        marginTop: 18,
+        backgroundColor: theme.colors.accentMuted,
         paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 20,
+        paddingVertical: 10,
+        borderRadius: 999,
         borderWidth: 1,
-        borderColor: 'rgba(29, 185, 84, 0.3)',
+        borderColor: theme.colors.accent,
         gap: 8,
     },
     connectedText: {
         fontSize: 14,
-        color: '#1DB954',
+        color: theme.colors.accent,
         fontWeight: '600',
     },
     connectHint: {
         marginTop: 20,
         fontSize: 14,
-        color: '#B3B3B3',
+        color: theme.colors.textMuted,
         textAlign: 'center',
         lineHeight: 20,
     },
     primaryButton: {
-        marginTop: 24,
-        backgroundColor: '#1DB954',
-        paddingVertical: 14,
+        marginTop: 20,
+        backgroundColor: theme.colors.accent,
+        paddingVertical: 16,
         paddingHorizontal: 24,
         borderRadius: 32,
         flexDirection: 'row',
         alignItems: 'center',
         gap: 10,
-        shadowColor: '#1DB954',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 5,
+        alignSelf: 'stretch',
+        justifyContent: 'center',
     },
     primaryButtonText: {
-        color: '#000000',
+        color: '#fff',
         fontSize: 16,
         fontWeight: '700',
     },
@@ -220,11 +241,11 @@ const styles = StyleSheet.create({
         marginBottom: 32,
     },
     sectionTitle: {
-        fontSize: 22,
+        fontSize: 20,
         fontWeight: '700',
-        color: '#FFFFFF',
+        color: theme.colors.text,
         marginBottom: 16,
-        textAlign: 'center', // Center align for symmetry
+        textAlign: 'center',
     },
     cardsRow: {
         flexDirection: 'row',
@@ -232,85 +253,64 @@ const styles = StyleSheet.create({
     },
     featureCard: {
         flex: 1,
-        backgroundColor: '#282828',
-        borderRadius: 20,
+        backgroundColor: theme.colors.surface,
+        borderRadius: 24,
         padding: 20,
-        alignItems: 'center', // Center align content
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 5,
+        alignItems: 'center',
+        gap: 12,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
     },
     featureIconCircle: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: 'rgba(29, 185, 84, 0.2)',
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: theme.colors.accentMuted,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 12,
     },
     featureTitle: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#FFFFFF',
-        marginBottom: 6,
+        color: theme.colors.text,
         textAlign: 'center',
     },
     featureSubtitle: {
-        fontSize: 12,
-        color: '#B3B3B3',
+        fontSize: 13,
+        color: theme.colors.textMuted,
         textAlign: 'center',
-        lineHeight: 16,
+        lineHeight: 18,
     },
     activityCard: {
-        backgroundColor: '#282828',
-        borderRadius: 20,
+        backgroundColor: theme.colors.surface,
+        borderRadius: 24,
         padding: 20,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 5,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        gap: 16,
     },
     activityRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 16,
         gap: 12,
     },
     activityTextContainer: {
         flex: 1,
     },
     activityPrimary: {
-        fontSize: 14,
-        color: '#FFFFFF',
-        fontWeight: '500',
+        fontSize: 15,
+        color: theme.colors.text,
+        fontWeight: '600',
     },
     activitySecondary: {
-        fontSize: 12,
-        color: '#B3B3B3',
-        marginTop: 2,
+        fontSize: 13,
+        color: theme.colors.textMuted,
     },
     mockNote: {
         marginTop: 12,
         fontSize: 12,
-        color: '#666666',
+        color: theme.colors.textMuted,
         textAlign: 'center',
         fontStyle: 'italic',
-    },
-    logoutButton: {
-        alignSelf: 'center',
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 8,
-        padding: 12,
-        gap: 8,
-    },
-    logoutText: {
-        color: '#FF6B6B',
-        fontSize: 16,
-        fontWeight: '600',
     },
 });

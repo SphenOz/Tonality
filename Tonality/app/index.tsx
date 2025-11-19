@@ -1,317 +1,273 @@
-import { Redirect, router } from 'expo-router';
-import React, { useEffect, useState } from "react";
-import { Text, View, StyleSheet, ActivityIndicator, Pressable, TextInput, KeyboardAvoidingView, Platform } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useSpotifyAuth } from '../hooks/useSpotifyAuth';
-import { useTonalityAuth } from '../hooks/useTonalityAuth';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTonalityAuth } from '../hooks/useTonalityAuth';
+import { useTheme } from '../context/ThemeContext';
+import type { Theme } from '../context/ThemeContext';
 
 export default function Index() {
-  const { token, promptAsync, request, isLoaded: spotifyLoaded } = useSpotifyAuth();
-  const { login: tonalityLogin, isAuthenticated, loading: tonalityLoading } = useTonalityAuth();
-
-  // Auth Flow State
-  // 0: Welcome
-  // 1: Tonality Login/Signup
-  // 2: Spotify Connect (if Tonality auth done)
-  const [step, setStep] = useState(0);
+  const router = useRouter();
+  const { theme } = useTheme();
+  const { login: tonalityLogin, isAuthenticated, loading } = useTonalityAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  // Note: Global redirection is now handled in app/_layout.tsx
-  // We only need to handle local step advancement if needed
-  // Note: Global redirection is now handled in app/_layout.tsx
-  // We only need to handle local step advancement if needed
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   useEffect(() => {
-    if (isAuthenticated && !spotifyLoaded) {
-      // Waiting for spotify load
-    } else if (isAuthenticated && spotifyLoaded && !token) {
-      // User is logged in to Tonality but needs to connect Spotify
-      setStep(2);
+    console.log("LoginScreen: Mounted. isAuthenticated:", isAuthenticated);
+    if (!loading && isAuthenticated) {
+      console.log("LoginScreen: User is authenticated, redirecting to tabs...");
+      router.replace('/(tabs)');
     }
-  }, [isAuthenticated, spotifyLoaded, token]);
+  }, [isAuthenticated, loading, router]);
 
-  // Navigate to main tabs after authentication
-  const handleEnterApp = () => {
-    router.replace('/(tabs)');
-  };
-
-  // Handle Tonality Auth (Mock)
-  const handleTonalityAuth = async () => {
-    if (email && password) {
-      try {
-        await tonalityLogin(email, password);
-        setStep(2);
-      } catch (e) {
-        alert("Login failed");
-      }
-    } else {
-      alert("Please enter email and password");
+  const handleAuth = async () => {
+    if (!email || !password) {
+      return alert('Please enter your email and password');
+    }
+    try {
+      setSubmitting(true);
+      await tonalityLogin(email.trim(), password);
+      router.replace('/(tabs)');
+  } catch {
+      alert('Authentication failed. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const renderWelcome = () => (
-    <View style={styles.welcomeContainer}>
-      <Text style={styles.welcomeTitle}>Welcome to Tonality</Text>
-      <Text style={styles.welcomeSubtitle}>Your music sharing journey starts here.</Text>
-      <Pressable style={styles.primaryButton} onPress={() => setStep(1)}>
-        <Ionicons name="arrow-forward" size={20} color="white" />
-        <Text style={styles.primaryButtonText}>Get Started</Text>
-      </Pressable>
-    </View>
-  );
-
-  const renderTonalityAuth = () => (
-    <View style={styles.authBox}>
-      <Text style={styles.authTitle}>{isSignUp ? 'Create Account' : 'Welcome Back'}</Text>
-      <Text style={styles.authSubtitle}>{isSignUp ? 'Sign up to start sharing' : 'Log in to continue'}</Text>
-
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor="#B3B3B3"
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        keyboardType="email-address"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        placeholderTextColor="#B3B3B3"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-      />
-
-      <Pressable style={styles.primaryButton} onPress={handleTonalityAuth}>
-        <Text style={styles.primaryButtonText}>{isSignUp ? 'Sign Up' : 'Log In'}</Text>
-      </Pressable>
-
-      <Pressable style={styles.switchAuthButton} onPress={() => setIsSignUp(!isSignUp)}>
-        <Text style={styles.switchAuthText}>
-          {isSignUp ? 'Already have an account? Log In' : "Don't have an account? Sign Up"}
-        </Text>
-      </Pressable>
-    </View>
-  );
-
-  const renderSpotifyConnect = () => (
-    <View style={styles.authBox}>
-      <Text style={styles.authTitle}>Connect Music</Text>
-      <Text style={styles.authSubtitle}>Link your Spotify account to share tracks</Text>
-
-      {!token ? (
-        !request ? (
-          <ActivityIndicator size="large" color="#a8C3A0" style={{ marginTop: 20 }} />
-        ) : (
-          <Pressable style={styles.spotifyButton} onPress={() => promptAsync()}>
-            <Ionicons name="musical-notes" size={20} color="white" />
-            <Text style={styles.spotifyButtonText}>Connect Spotify</Text>
-          </Pressable>
-        )
-      ) : (
-        <View style={styles.connectedContainer}>
-          <View style={styles.successBadge}>
-            <Ionicons name="checkmark-circle" size={24} color="#1DB954" />
-            <Text style={styles.successText}>Spotify Connected!</Text>
-          </View>
-          <Pressable style={styles.enterButton} onPress={handleEnterApp}>
-            <Text style={styles.enterButtonText}>Enter App</Text>
-            <Ionicons name="arrow-forward" size={20} color="white" />
-          </Pressable>
-        </View>
-      )}
-    </View>
-  );
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator size="large" color={theme.colors.accent} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.keyboardView}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Tonality</Text>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboardView}>
+        <View style={styles.heroSection}>
+          <View style={styles.logoBadge}>
+            <Ionicons name="musical-notes" size={20} color={theme.colors.text} />
+          </View>
+          <Text style={styles.brandTitle}>Tonality</Text>
+          <Text style={styles.brandSubtitle}>Social music sharing for people who obsess over playlists.</Text>
+          <View style={styles.dividerRow}>
+            <View style={styles.divider} />
+            <Ionicons name="sparkles" size={16} color={theme.colors.textMuted} />
+            <View style={styles.divider} />
+          </View>
+          <Text style={styles.heroHighlight}>Log in or create an account in seconds.</Text>
         </View>
 
-        <View style={styles.content}>
-          {step === 0 && renderWelcome()}
-          {step === 1 && renderTonalityAuth()}
-          {step === 2 && renderSpotifyConnect()}
+        <View style={styles.formCard}>
+          <Text style={styles.formTitle}>{isSignUp ? 'Create your account' : 'Welcome back'}</Text>
+          <Text style={styles.formSubtitle}>
+            {isSignUp ? 'Start curating collaborative vibes.' : 'Pick up where your queue left off.'}
+          </Text>
+
+          <View style={styles.inputsRow}>
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              placeholderTextColor={theme.colors.textMuted}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              placeholderTextColor={theme.colors.textMuted}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
+          </View>
+
+          <Pressable style={[styles.primaryButton, submitting && styles.primaryButtonDisabled]} onPress={handleAuth} disabled={submitting}>
+            {submitting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <Ionicons name={isSignUp ? 'sparkles' : 'log-in'} size={18} color="#fff" />
+                <Text style={styles.primaryButtonText}>{isSignUp ? 'Create account' : 'Log in'}</Text>
+              </>
+            )}
+          </Pressable>
+
+          <Pressable style={styles.switchModeButton} onPress={() => setIsSignUp(!isSignUp)}>
+            <Text style={styles.switchModeText}>
+              {isSignUp ? 'Already have an account? Sign in' : "Need an account? Sign up"}
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.supportRow}>
+          <View style={styles.supportColumn}>
+            <Text style={styles.supportLabel}>Stay synced</Text>
+            <Text style={styles.supportValue}>Link Spotify right from your dashboard.</Text>
+          </View>
+          <View style={styles.supportColumn}>
+            <Text style={styles.supportLabel}>Secure mock auth</Text>
+            <Text style={styles.supportValue}>Credentials live only on this device.</Text>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#121212', // Dark mode background
-  },
-  keyboardView: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  header: {
-    position: 'absolute',
-    top: 80,
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: 42,
-    fontWeight: '800',
-    color: '#1DB954', // Spotify Green
-    letterSpacing: 1,
-  },
-  content: {
-    width: '100%',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  welcomeContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  welcomeTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  welcomeSubtitle: {
-    fontSize: 18,
-    color: '#B3B3B3',
-    marginBottom: 40,
-    textAlign: 'center',
-    lineHeight: 24,
-  },
-  authBox: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: '#282828',
-    borderRadius: 24,
-    padding: 32,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 10,
-  },
-  authTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  authSubtitle: {
-    fontSize: 14,
-    color: '#B3B3B3',
-    marginBottom: 32,
-    textAlign: 'center',
-  },
-  input: {
-    width: '100%',
-    backgroundColor: '#404040',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    fontSize: 16,
-    color: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#404040',
-  },
-  primaryButton: {
-    backgroundColor: '#1DB954',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 32,
-    marginTop: 16,
-    width: '100%',
-    shadowColor: '#1DB954',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  primaryButtonText: {
-    color: '#000000',
-    fontSize: 16,
-    fontWeight: '700',
-    marginRight: 8,
-  },
-  switchAuthButton: {
-    marginTop: 24,
-    padding: 8,
-  },
-  switchAuthText: {
-    color: '#B3B3B3',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  spotifyButton: {
-    backgroundColor: '#1DB954',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 32,
-    width: '100%',
-    justifyContent: 'center',
-    shadowColor: '#1DB954',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  spotifyButtonText: {
-    color: '#000000',
-    fontSize: 16,
-    fontWeight: '700',
-    marginLeft: 12,
-  },
-  connectedContainer: {
-    alignItems: 'center',
-    width: '100%',
-  },
-  successBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 32,
-    backgroundColor: 'rgba(29, 185, 84, 0.1)',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(29, 185, 84, 0.3)',
-  },
-  successText: {
-    marginLeft: 8,
-    color: '#1DB954',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  enterButton: {
-    backgroundColor: '#FFFFFF',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 32,
-    width: '100%',
-  },
-  enterButtonText: {
-    color: '#000000',
-    fontSize: 16,
-    fontWeight: '700',
-    marginRight: 8,
-  },
-});
+const createStyles = (theme: Theme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    keyboardView: {
+      flex: 1,
+      padding: 24,
+      justifyContent: 'center',
+    },
+    heroSection: {
+      alignItems: 'center',
+      marginBottom: 32,
+      gap: 12,
+    },
+    logoBadge: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    brandTitle: {
+      fontSize: 36,
+      fontWeight: '800',
+      color: theme.colors.text,
+      letterSpacing: 0.5,
+    },
+    brandSubtitle: {
+      fontSize: 16,
+      color: theme.colors.textMuted,
+      textAlign: 'center',
+      maxWidth: 320,
+      lineHeight: 22,
+    },
+    dividerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 12,
+    },
+    divider: {
+      flex: 1,
+      height: 1,
+      backgroundColor: theme.colors.border,
+    },
+    heroHighlight: {
+      marginTop: 4,
+      fontSize: 14,
+      color: theme.colors.textMuted,
+      textAlign: 'center',
+    },
+    formCard: {
+      backgroundColor: theme.colors.surface,
+      borderRadius: 28,
+      padding: 24,
+      shadowColor: theme.colors.shadow,
+      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: 0.45,
+      shadowRadius: 24,
+      elevation: 10,
+      marginBottom: 32,
+    },
+    formTitle: {
+      fontSize: 24,
+      fontWeight: '700',
+      color: theme.colors.text,
+      textAlign: 'center',
+    },
+    formSubtitle: {
+      fontSize: 14,
+      color: theme.colors.textMuted,
+      textAlign: 'center',
+      marginTop: 4,
+      marginBottom: 16,
+    },
+    inputsRow: {
+      gap: 12,
+    },
+    input: {
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      fontSize: 16,
+      color: theme.colors.text,
+      backgroundColor: theme.colors.surfaceMuted,
+    },
+    primaryButton: {
+      marginTop: 16,
+      borderRadius: 999,
+      backgroundColor: theme.colors.accent,
+      paddingVertical: 16,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 8,
+    },
+    primaryButtonDisabled: {
+      opacity: 0.6,
+    },
+    primaryButtonText: {
+      color: '#fff',
+      fontWeight: '700',
+      fontSize: 16,
+    },
+    switchModeButton: {
+      marginTop: 18,
+      alignSelf: 'center',
+    },
+    switchModeText: {
+      color: theme.colors.textMuted,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    supportRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      gap: 16,
+    },
+    supportColumn: {
+      flex: 1,
+      padding: 16,
+      borderRadius: 20,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    supportLabel: {
+      fontSize: 12,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+      color: theme.colors.textMuted,
+      marginBottom: 6,
+    },
+    supportValue: {
+      color: theme.colors.text,
+      fontSize: 14,
+      lineHeight: 20,
+    },
+  });

@@ -76,8 +76,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.log("AuthContext: SecureStore cleared");
         } catch (e) {
             console.error("AuthContext: logout failed", e);
+        } finally {
+            await checkAuth();
         }
-    }, []);
+    }, [checkAuth]);
 
     return (
         <AuthContext.Provider value={{

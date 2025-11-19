@@ -1,13 +1,17 @@
 import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getCurrentPoll, voteForSong, getUserVote, Poll } from '../../api/mockBackend';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../context/ThemeContext';
+import type { Theme } from '../../context/ThemeContext';
 
 export default function PollsScreen() {
     const [poll, setPoll] = useState<Poll | null>(null);
     const [loading, setLoading] = useState(true);
     const [userVote, setUserVote] = useState<string | undefined>();
+    const { theme } = useTheme();
+    const styles = useMemo(() => createStyles(theme), [theme]);
 
     useEffect(() => {
         loadPoll();
@@ -43,8 +47,8 @@ export default function PollsScreen() {
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
-                <ActivityIndicator size="large" color="#a8C3A0" />
+            <SafeAreaView style={styles.containerCentered}>
+                <ActivityIndicator size="large" color={theme.colors.accent} />
                 <Text style={styles.loadingText}>Loading polls...</Text>
             </SafeAreaView>
         );
@@ -52,7 +56,8 @@ export default function PollsScreen() {
 
     if (!poll) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.containerCentered}>
+                <Ionicons name="stats-chart" size={48} color={theme.colors.accent} />
                 <Text style={styles.title}>Weekly Polls</Text>
                 <Text style={styles.subtitle}>No active polls right now. Check back soon!</Text>
             </SafeAreaView>
@@ -70,11 +75,11 @@ export default function PollsScreen() {
                     <Text style={styles.subtitle}>Vote for your favorite track this week</Text>
                     <View style={styles.badgeRow}>
                         <View style={styles.badge}>
-                            <Ionicons name="time-outline" size={14} color="#3E3E3E" />
+                            <Ionicons name="time-outline" size={14} color={theme.colors.textMuted} />
                             <Text style={styles.badgeText}>Closes in 3 days</Text>
                         </View>
                         <View style={styles.badge}>
-                            <Ionicons name="people-outline" size={14} color="#3E3E3E" />
+                            <Ionicons name="people-outline" size={14} color={theme.colors.textMuted} />
                             <Text style={styles.badgeText}>Community pick</Text>
                         </View>
                     </View>
@@ -86,7 +91,7 @@ export default function PollsScreen() {
                         const isVoted = userVote === song.id;
 
                         return (
-                            <Pressable
+                                <Pressable
                                 key={song.id}
                                 style={[styles.songCard, isVoted && styles.songCardVoted]}
                                 onPress={() => handleVote(song.id)}
@@ -98,7 +103,7 @@ export default function PollsScreen() {
 
                                 <View style={styles.voteInfo}>
                                     {isVoted && (
-                                        <Ionicons name="checkmark-circle" size={24} color="#1DB954" />
+                                        <Ionicons name="checkmark-circle" size={24} color={theme.colors.accent} />
                                     )}
                                     <Text style={styles.voteCount}>{song.votes} votes</Text>
                                 </View>
@@ -119,123 +124,125 @@ export default function PollsScreen() {
     );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: Theme) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#121212',
+        backgroundColor: theme.colors.background,
+    },
+    containerCentered: {
+        flex: 1,
+        backgroundColor: theme.colors.background,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+        padding: 24,
     },
     scrollView: {
         flex: 1,
     },
     scrollContent: {
         padding: 24,
+        paddingBottom: 64,
+        gap: 24,
     },
     header: {
-        marginTop: 20,
-        marginBottom: 30,
         alignItems: 'center',
+        gap: 10,
     },
     title: {
         fontSize: 28,
-        fontWeight: 'bold',
-        color: '#FFFFFF',
+        fontWeight: '800',
+        color: theme.colors.text,
+        textAlign: 'center',
     },
     pollTitle: {
         fontSize: 18,
         fontWeight: '600',
-        color: '#FFFFFF',
-        marginTop: 15,
+        color: theme.colors.text,
         textAlign: 'center',
     },
     subtitle: {
         fontSize: 14,
-        color: '#B3B3B3',
-        marginTop: 5,
+        color: theme.colors.textMuted,
+        textAlign: 'center',
     },
     loadingText: {
-        marginTop: 20,
-        color: '#B3B3B3',
+        color: theme.colors.textMuted,
     },
     badgeRow: {
         flexDirection: 'row',
         gap: 12,
-        marginTop: 12,
     },
     badge: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-        borderRadius: 16,
+        backgroundColor: theme.colors.surface,
+        borderRadius: 18,
         paddingHorizontal: 12,
         paddingVertical: 6,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
     },
     badgeText: {
         fontSize: 12,
-        color: '#B3B3B3',
+        color: theme.colors.textMuted,
     },
     songsContainer: {
         gap: 16,
     },
     songCard: {
-        backgroundColor: '#282828',
-        borderRadius: 16,
+        backgroundColor: theme.colors.surface,
+        borderRadius: 24,
         padding: 20,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 5,
-        position: 'relative',
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        gap: 10,
     },
     songCardVoted: {
+        borderColor: theme.colors.accent,
         borderWidth: 2,
-        borderColor: '#1DB954',
     },
     songInfo: {
-        marginBottom: 12,
+        gap: 4,
     },
     songName: {
         fontSize: 18,
         fontWeight: '600',
-        color: '#FFFFFF',
+        color: theme.colors.text,
     },
     artistName: {
         fontSize: 14,
-        color: '#B3B3B3',
-        marginTop: 4,
+        color: theme.colors.textMuted,
     },
     voteInfo: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        marginBottom: 12,
     },
     voteCount: {
         fontSize: 14,
-        color: '#B3B3B3',
+        color: theme.colors.textMuted,
     },
     progressBarContainer: {
         height: 8,
-        backgroundColor: '#404040',
+        backgroundColor: theme.colors.surfaceMuted,
         borderRadius: 4,
         overflow: 'hidden',
-        marginBottom: 6,
     },
     progressBar: {
         height: '100%',
-        backgroundColor: '#1DB954',
+        backgroundColor: theme.colors.accent,
+        borderRadius: 4,
     },
     percentage: {
         fontSize: 12,
-        color: '#B3B3B3',
+        color: theme.colors.textMuted,
         textAlign: 'right',
     },
     totalVotes: {
         fontSize: 14,
-        color: '#666666',
+        color: theme.colors.textMuted,
         textAlign: 'center',
-        marginTop: 30,
-        marginBottom: 20,
     },
 });

@@ -82,6 +82,15 @@ Planned backend technologies (not yet implemented in this repo):
 
 ---
 
+### Spotify developer settings
+
+To prevent `INVALID_CLIENT: Invalid redirect URL` from Spotify, make sure both of the following callback URLs are added to your app configuration at <https://developer.spotify.com/dashboard/>:
+
+- `https://auth.expo.io/@spheno/Tonality` *(required while running in Expo Go / dev client)*
+- `tonality://spotify-auth` *(used by standalone builds and the production scheme defined in `app.json`)*
+
+After saving the changes, re-run the Expo dev server so the new redirect URIs take effect.
+
 
 
 ## Future work

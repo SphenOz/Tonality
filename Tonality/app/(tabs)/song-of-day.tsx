@@ -1,12 +1,16 @@
 import { View, Text, StyleSheet, Image, Pressable, Linking, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSpotifyAuth } from '../../hooks/useSpotifyAuth';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchUserTopTracks } from '../../api/spotify';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../context/ThemeContext';
+import type { Theme } from '../../context/ThemeContext';
 
 export default function SongOfDayScreen() {
     const { token, promptAsync } = useSpotifyAuth();
+    const { theme } = useTheme();
+    const styles = useMemo(() => createStyles(theme), [theme]);
     const [songOfDay, setSongOfDay] = useState<any>(null);
     const [loading, setLoading] = useState(false);
 
@@ -52,16 +56,17 @@ export default function SongOfDayScreen() {
     if (!token) {
         return (
             <SafeAreaView style={styles.containerCentered}>
-                <Ionicons name="musical-notes" size={48} color="#3E3E3E" />
-                <Text style={styles.title}>Song of the Day</Text>
-                <Text style={styles.description}>
-                    Connect your Spotify account to generate a personalized Song of the Day based on
-                    your recent listening.
-                </Text>
-                <Pressable style={styles.primaryButton} onPress={handleConnect}>
-                    <Ionicons name="musical-notes" size={22} color="white" />
-                    <Text style={styles.primaryButtonText}>Connect with Spotify</Text>
-                </Pressable>
+                <View style={styles.emptyCard}>
+                    <Ionicons name="musical-notes" size={52} color={theme.colors.accent} />
+                    <Text style={styles.title}>Song of the Day</Text>
+                    <Text style={styles.description}>
+                        Connect Spotify to let Tonality craft a daily track based on your freshest plays.
+                    </Text>
+                    <Pressable style={styles.primaryButton} onPress={handleConnect}>
+                        <Ionicons name="link" size={20} color="#fff" />
+                        <Text style={styles.primaryButtonText}>Link Spotify</Text>
+                    </Pressable>
+                </View>
             </SafeAreaView>
         );
     }
@@ -69,7 +74,7 @@ export default function SongOfDayScreen() {
     if (loading) {
         return (
             <SafeAreaView style={styles.containerCentered}>
-                <ActivityIndicator size="large" color="#a8C3A0" />
+                <ActivityIndicator size="large" color={theme.colors.accent} />
                 <Text style={styles.loadingText}>Finding your song of the day...</Text>
             </SafeAreaView>
         );
@@ -83,7 +88,7 @@ export default function SongOfDayScreen() {
                     No tracks found. Try listening to more music on Spotify and then refresh.
                 </Text>
                 <Pressable style={styles.secondaryButton} onPress={loadSongOfDay}>
-                    <Ionicons name="refresh" size={18} color="#3E3E3E" />
+                    <Ionicons name="refresh" size={18} color={theme.colors.text} />
                     <Text style={styles.secondaryButtonText}>Try Again</Text>
                 </Pressable>
             </SafeAreaView>
@@ -112,159 +117,158 @@ export default function SongOfDayScreen() {
                 <Text style={styles.albumName}>{songOfDay.album?.name}</Text>
 
                 <Pressable style={styles.playButton} onPress={openInSpotify}>
-                    <Ionicons name="play-circle" size={28} color="white" />
+                    <Ionicons name="play" size={20} color="#000" />
                     <Text style={styles.playButtonText}>Play on Spotify</Text>
                 </Pressable>
 
                 <Pressable style={styles.refreshButton} onPress={loadSongOfDay}>
-                    <Ionicons name="refresh" size={20} color="#3E3E3E" />
-                    <Text style={styles.refreshButtonText}>Get Another</Text>
+                    <Ionicons name="refresh" size={18} color={theme.colors.textMuted} />
+                    <Text style={styles.refreshButtonText}>Spin again</Text>
                 </Pressable>
             </View>
         </SafeAreaView>
     );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: Theme) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#121212',
+        backgroundColor: theme.colors.background,
         alignItems: 'center',
         padding: 20,
     },
     containerCentered: {
         flex: 1,
-        backgroundColor: '#121212',
+        backgroundColor: theme.colors.background,
         alignItems: 'center',
         justifyContent: 'center',
         padding: 20,
     },
+    emptyCard: {
+        width: '100%',
+        maxWidth: 360,
+        backgroundColor: theme.colors.surface,
+        borderRadius: 28,
+        alignItems: 'center',
+        padding: 32,
+        gap: 12,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+    },
     header: {
-        marginTop: 20,
-        marginBottom: 30,
+        marginTop: 12,
+        marginBottom: 24,
         alignItems: 'center',
     },
     title: {
-        fontSize: 28,
-        fontWeight: 'bold',
-        color: '#FFFFFF',
+        fontSize: 26,
+        fontWeight: '700',
+        color: theme.colors.text,
+        textAlign: 'center',
     },
     subtitle: {
         fontSize: 14,
-        color: '#B3B3B3',
-        marginTop: 5,
+        color: theme.colors.textMuted,
+        marginTop: 6,
+        textAlign: 'center',
     },
     loadingText: {
         marginTop: 20,
-        color: '#B3B3B3',
+        color: theme.colors.textMuted,
     },
     description: {
-        marginTop: 10,
+        marginTop: 6,
         fontSize: 14,
-        color: '#B3B3B3',
+        color: theme.colors.textMuted,
         textAlign: 'center',
         lineHeight: 20,
     },
     songCard: {
-        backgroundColor: '#282828',
-        borderRadius: 20,
-        padding: 30,
+        backgroundColor: theme.colors.surface,
+        borderRadius: 32,
+        padding: 26,
         alignItems: 'center',
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 5,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
         width: '100%',
-        maxWidth: 350,
+        maxWidth: 380,
+        gap: 12,
     },
     albumArt: {
-        width: 200,
-        height: 200,
-        borderRadius: 12,
-        marginBottom: 20,
+        width: 220,
+        height: 220,
+        borderRadius: 24,
     },
     songTitle: {
-        fontSize: 22,
-        fontWeight: 'bold',
-        color: '#FFFFFF',
+        fontSize: 24,
+        fontWeight: '700',
+        color: theme.colors.text,
         textAlign: 'center',
-        marginBottom: 8,
     },
     artistName: {
         fontSize: 16,
-        color: '#B3B3B3',
+        color: theme.colors.textMuted,
         textAlign: 'center',
-        marginBottom: 4,
     },
     albumName: {
         fontSize: 14,
-        color: '#888',
+        color: theme.colors.textMuted,
         textAlign: 'center',
-        marginBottom: 25,
     },
     playButton: {
-        backgroundColor: '#1DB954',
+        marginTop: 16,
+        backgroundColor: theme.colors.accent,
+        borderRadius: 999,
+        paddingVertical: 14,
+        paddingHorizontal: 24,
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 12,
-        paddingHorizontal: 30,
-        borderRadius: 32,
-        marginBottom: 15,
-        shadowColor: '#1DB954',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 5,
+        gap: 10,
     },
     playButtonText: {
-        color: '#000000',
-        fontSize: 16,
+        color: '#000',
         fontWeight: '700',
-        marginLeft: 8,
+        fontSize: 15,
     },
     primaryButton: {
-        marginTop: 20,
-        backgroundColor: '#1DB954',
+        marginTop: 12,
+        backgroundColor: theme.colors.accent,
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 12,
+        paddingVertical: 14,
         paddingHorizontal: 24,
-        borderRadius: 32,
-        shadowColor: '#1DB954',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 5,
+        borderRadius: 999,
+        gap: 8,
     },
     primaryButtonText: {
-        color: '#000000',
-        fontSize: 16,
+        color: '#fff',
+        fontSize: 15,
         fontWeight: '700',
-        marginLeft: 8,
     },
     refreshButton: {
+        marginTop: 8,
         flexDirection: 'row',
         alignItems: 'center',
+        gap: 6,
         paddingVertical: 8,
-        paddingHorizontal: 20,
     },
     refreshButtonText: {
-        color: '#B3B3B3',
+        color: theme.colors.textMuted,
         fontSize: 14,
-        marginLeft: 6,
     },
     secondaryButton: {
         marginTop: 16,
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 10,
-        paddingHorizontal: 20,
-        borderRadius: 32,
-        backgroundColor: '#282828',
+        paddingVertical: 12,
+        paddingHorizontal: 22,
+        borderRadius: 999,
+        backgroundColor: theme.colors.surface,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
     },
     secondaryButtonText: {
-        color: '#FFFFFF',
+        color: theme.colors.text,
         fontSize: 14,
         marginLeft: 6,
         fontWeight: '600',
