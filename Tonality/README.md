@@ -1,50 +1,122 @@
-# Welcome to your Expo app 👋
+# Tonality 🎵
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Tonality is a mobile music sharing prototype built with React Native and Expo. It integrates with the Spotify Web API to:
 
-## Get started
+- Let users **connect their Spotify account**
+- Show a personalized **Song of the Day** based on their recent listening
+- Provide **Weekly Polls** where users can vote on tracks (currently backed by a mock in-memory backend)
+
+This project is intended as a semester project prototype and a foundation for a fuller social music app.
+
+---
+
+## Features implemented for the prototype
+
+- **Spotify Authentication** using `expo-auth-session` and PKCE
+   - Connect/disconnect from Spotify
+   - Fetch basic profile information (display name)
+- **Home tab** (`app/(tabs)/index.tsx`)
+   - Shows app title and tagline
+   - "Connect with Spotify" call-to-action when logged out
+   - Displays "Connected as &lt;Spotify name&gt;" when logged in
+   - Quick navigation cards for **Song of the Day** and **Weekly Polls**
+   - A small, **mocked friend activity feed** to illustrate the social concept
+- **Song of the Day tab** (`app/(tabs)/song-of-day.tsx`)
+   - When logged out: explains the feature and shows a "Connect with Spotify" button
+   - When logged in: fetches your top tracks from Spotify and picks a random one as your Song of the Day
+   - Shows album art, track title, artists, album name
+   - "Play on Spotify" button opens the track in the Spotify app / web
+- **Weekly Polls tab** (`app/(tabs)/polls.tsx`)
+   - Uses a **mock backend** (`api/mockBackend.ts`) with in-memory poll data
+   - Users can vote for a song; vote counts and percentages update immediately
+   - Highlights your selected song and shows total votes
+   - Header includes small badges (e.g., "Closes in 3 days", "Community pick") for context
+
+Backend behavior for polls and friend activity is currently mocked in-memory. In the full project this will be replaced by a **FastAPI** backend with a **MySQL** database.
+
+---
+
+## Tech stack
+
+- **Frameworks**
+   - React Native (via Expo)
+   - Expo Router for file-based navigation and tabs
+- **Auth & APIs**
+   - `expo-auth-session` for Spotify OAuth with PKCE
+   - Spotify Web API (`/me`, `/me/top/tracks`)
+- **Storage**
+   - `expo-secure-store` for storing the Spotify access token on device
+- **UI**
+   - `react-native` core components
+   - `@expo/vector-icons` (Ionicons)
+
+Planned backend technologies (not yet implemented in this repo):
+
+- **FastAPI** for the REST backend
+- **MySQL** for persistent storage of users, polls, votes, and activity
+
+---
+
+## Getting started
 
 1. Install dependencies
 
-   ```bash
-   npm install
-   ```
+    ```bash
+    npm install
+    ```
 
-2. Start the app
+2. Start the app (development server)
 
-   ```bash
-   npx expo start
-   ```
+    ```bash
+    npm run start
+    ```
 
-In the output, you'll find options to open the app in a
+3. Open the app using one of:
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- A development build
+- Android emulator
+- iOS simulator
+- Expo Go
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+> This project uses Expo Router, so screens live under the `app/` directory.
 
-## Get a fresh project
+---
 
-When you're ready, run:
+## How to demo for the mid-semester check-in
 
-```bash
-npm run reset-project
-```
+1. **Home tab**
+    - Explain the concept: Tonality is a social music app for sharing and discovering tracks.
+    - If logged out, show the **"Connect with Spotify"** button and go through the login flow.
+    - Point out the quick cards for **Song of the Day** and **Weekly Polls**.
+    - Mention that the **friend activity feed** is currently mocked but represents the future social feed.
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+2. **Song of the Day tab**
+    - If not connected, show how the screen asks the user to connect to Spotify.
+    - Once connected, show the generated **Song of the Day** based on Spotify top tracks.
+    - Tap **"Play on Spotify"** to demonstrate deep linking into Spotify.
 
-## Learn more
+3. **Weekly Polls tab**
+    - Show the active poll and describe that it's currently powered by an in-memory **mock backend**.
+    - Cast a vote and show how the vote counts and percentages change and how your selection is highlighted.
+    - Explain that in the full version, votes and polls will be stored in a **FastAPI + MySQL** backend.
 
-To learn more about developing your project with Expo, look at the following resources:
+---
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## Future work
 
-## Join the community
+- Implement a real FastAPI backend and connect the app to it
+- Persist polls, votes, and user relationships in MySQL
+- Build a real social feed of shared songs and votes
+- Add user profiles and the ability to follow friends
 
-Join our community of developers creating universal apps.
+---
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Scripts
+
+Useful `package.json` scripts:
+
+- `npm run start` – start the Expo dev server
+- `npm run android` – run the app on Android
+- `npm run ios` – run the app on iOS
+- `npm run web` – run the app in a web browser
+- `npm run lint` – run ESLint via Expo's config
