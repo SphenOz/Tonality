@@ -86,7 +86,7 @@ function useProvideSpotifyAuth(): SpotifyAuthContextValue {
         };
     }, [storageKey]);
 
-    // Save verifier/state
+    // Save verifier/state whenever they change on the request
     useEffect(() => {
         if (request?.codeVerifier) {
             SecureStore.setItemAsync(CV_KEY, request.codeVerifier);
@@ -96,7 +96,7 @@ function useProvideSpotifyAuth(): SpotifyAuthContextValue {
             SecureStore.setItemAsync(STATE_KEY, request.state);
             stateRef.current = request.state;
         }
-    }, [request]);
+    }, [request?.codeVerifier, request?.state]);
 
     const exchangeCodeForToken = useCallback(async (code: string, returnedState: string) => {
     console.log("[SpotifyAuth] Exchanging code for token. redirectUri=", REDIRECT_URI);
