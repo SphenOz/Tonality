@@ -1,18 +1,18 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import * as AuthSession from 'expo-auth-session';
+import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
-import Constants from 'expo-constants';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTonalityAuth } from '../context/AuthContext';
 
 WebBrowser.maybeCompleteAuthSession();
 
-const CLIENT_ID = '849539bc6c644d22a1e1f0ae019aa95d';
+const CLIENT_ID = 'dada8bee46da49d68928a05c68828cc4';
 const CV_KEY = "spotify_pkce_cv";
 const STATE_KEY = "spotify_oauth_state";
 const TOKEN_KEY = "spotify_access_token";
 
-const REDIRECT_PATH = 'spotify-auth';
+const REDIRECT_PATH = 'login';
 const IS_EXPO_GO = Constants.executionEnvironment === 'storeClient';
 const REDIRECT_URI = AuthSession.makeRedirectUri({ path: REDIRECT_PATH });
 const USE_PROXY = IS_EXPO_GO;
@@ -133,6 +133,7 @@ function useProvideSpotifyAuth(): SpotifyAuthContextValue {
             if (json.access_token) {
                 console.log("Token received successfully");
                 setToken(json.access_token);
+                console.log("Storing token with key:", json.access_token);
                 if (storageKey) {
                     SecureStore.setItemAsync(storageKey, json.access_token);
                 }
