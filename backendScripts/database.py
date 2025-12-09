@@ -4,11 +4,11 @@ from sqlalchemy.exc import IntegrityError
 
 class Users (SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    spotify_refresh_token: str
+    spotify_refresh_token: str | None = Field(default=None)
     username: str | None = Field(index=True, unique=True)
     password_hash: str
 
-DATABASE_URL = "mysql+pymysql://root:2994@localhost:3306/tonality"
+DATABASE_URL = "mysql+pymysql://tonality:2994@127.0.0.1:3306/tonality"
 engine = create_engine(DATABASE_URL)
 
 def create_db_and_tables():
@@ -28,11 +28,14 @@ def add_user(session: Session, username: str, password_hash: str) -> Users | Non
     session.add(user)
     try:
         session.commit()
-    except IntegrityError:
+    except IntegrityError as e:
         session.rollback()
+        print(f"Error adding user: {e}")
         return None  # or re-raise a custom error
     session.refresh(user)
     return user
 
-
 create_db_and_tables()
+print("Database and tables created.")
+session=next(get_session())
+print(add_user(session, username="testuser", password_hash="hashedpassword123"))
