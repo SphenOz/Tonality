@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
 
+// ⭐ backend base URL (adjust to your env)
 const API_BASE_URL ="http://10.250.196.103:8000";
 const TONALITY_TOKEN_KEY = "TONALITY_TOKEN";
 const TONALITY_USER_KEY = "TONALITY_USERNAME";

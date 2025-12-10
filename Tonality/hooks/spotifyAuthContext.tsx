@@ -58,7 +58,6 @@ function useProvideSpotifyAuth(): SpotifyAuthContextValue {
   const [token, setToken] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // ⭐ assume AuthContext exposes an auth token
   const { user, token: authToken } = useTonalityAuth();
 
   const stateRef = useRef<string | null>(null);
@@ -68,7 +67,7 @@ function useProvideSpotifyAuth(): SpotifyAuthContextValue {
     return user?.username ? `${TOKEN_KEY}_${user.username}` : null;
   }, [user?.username]);
 
-  // ⭐ separate key for the Spotify refresh token
+  // separate key for the Spotify refresh token
   const refreshStorageKey = useMemo(() => {
     return storageKey ? `${storageKey}_refresh` : null;
   }, [storageKey]);
@@ -178,7 +177,7 @@ function useProvideSpotifyAuth(): SpotifyAuthContextValue {
           console.error('Failed to get access token', json);
         }
 
-        // ⭐ NEW: store refresh token and send to backend
+        //store refresh token and send to backend
         if (json.refresh_token) {
           if (refreshStorageKey) {
             console.log(
@@ -191,7 +190,7 @@ function useProvideSpotifyAuth(): SpotifyAuthContextValue {
             );
           }
 
-          // ⭐ send refresh token to your backend /api/link_spotify
+          // send refresh token to your backend /api/link_spotify
           if (authToken) {
             try {
               const res = await fetch(
@@ -265,7 +264,7 @@ function useProvideSpotifyAuth(): SpotifyAuthContextValue {
       await SecureStore.deleteItemAsync(storageKey);
     }
     if (refreshStorageKey) {
-      // ⭐ also clear the stored refresh token
+      //also clear the stored refresh token
       await SecureStore.deleteItemAsync(refreshStorageKey);
     }
   }, [storageKey, refreshStorageKey]);

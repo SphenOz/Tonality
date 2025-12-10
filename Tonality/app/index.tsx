@@ -76,7 +76,7 @@ export default function Index() {
           <View style={styles.inputsRow}>
             <TextInput
               style={styles.input}
-              placeholder="username"
+              placeholder="Username"
               placeholderTextColor={theme.colors.textMuted}
               value={username}
               onChangeText={setUsername}
