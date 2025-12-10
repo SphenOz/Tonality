@@ -6,6 +6,7 @@ import { useSpotifyAuth } from '../../hooks/useSpotifyAuth';
 import { useTonalityAuth } from '../../context/AuthContext';
 import { ThemeMode, useTheme } from '../../context/ThemeContext';
 import type { Theme } from '../../context/ThemeContext';
+import { Image } from 'expo-image';
 import { fetchUserProfile } from '../../api/spotify';
 
 export default function ProfileScreen() {
@@ -49,9 +50,12 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{user?.email?.[0]?.toUpperCase() ?? 'T'}</Text>
+            <Image
+              source={{ uri: spotifyProfile?.images?.[0]?.url }}
+              style={{ width: 80, height: 80, borderRadius: 40 }}
+            />
           </View>
-          <Text style={styles.userEmail}>{user?.email}</Text>
+          <Text style={styles.userEmail}>{user?.username}</Text>
           <Text style={styles.userHint}>Manage your Tonality experience here.</Text>
         </View>
 
@@ -85,7 +89,7 @@ export default function ProfileScreen() {
                 <Text style={styles.connectionValue}>
                   {spotifyProfile?.display_name || 'Spotify User'}
                 </Text>
-                <Text style={styles.connectionEmail}>{spotifyProfile?.email}</Text>
+                <Text style={styles.connectionEmail}>{spotifyProfile?.username}</Text>
               </View>
             )}
             {!isLoaded && (

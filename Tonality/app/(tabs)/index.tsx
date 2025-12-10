@@ -64,7 +64,7 @@ export default function HomeScreen() {
                 <View style={styles.header}>
                     <View style={styles.headerBadge}>
                         <Ionicons name="sparkles" size={14} color={theme.colors.accent} />
-                        <Text style={styles.headerBadgeText}>Good to see you, {user?.email?.split('@')[0] || 'friend'}</Text>
+                        <Text style={styles.headerBadgeText}>Good to see you, {user?.username?.split('@')[0] || 'friend'}</Text>
                     </View>
                     <Text style={styles.appName}>Tonality</Text>
                     <Text style={styles.tagline}>Symmetric social listening for every vibe.</Text>

@@ -1,12 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
 
-const API_BASE_URL ="http://10.250.241.100:8000";
+const API_BASE_URL ="http://10.250.196.103:8000";
 const TONALITY_TOKEN_KEY = "TONALITY_TOKEN";
-const TONALITY_USER_KEY = "TONALITY_USER_EMAIL";
+const TONALITY_USER_KEY = "TONALITY_USERNAME";
 
 interface TonalityUser {
-    email: string;
+    username: string;
 }
 
 interface AuthContextType {
@@ -14,7 +14,7 @@ interface AuthContextType {
     token: string | null;
     loading: boolean;
     isAuthenticated: boolean;
-    login: (email: string, password: string, signup: boolean) => Promise<void>;
+    login: (username: string, password: string, signup: boolean) => Promise<void>;
     logout: () => Promise<void>;
     checkAuth: () => Promise<void>;
 }
@@ -30,11 +30,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(true);
         try {
             const storedToken = await SecureStore.getItemAsync(TONALITY_TOKEN_KEY);
-            const storedEmail = await SecureStore.getItemAsync(TONALITY_USER_KEY);
-            console.log("AuthContext: checkAuth", { storedToken, storedEmail });
-            if (storedToken && storedEmail) {
+            const storedusername = await SecureStore.getItemAsync(TONALITY_USER_KEY);
+            console.log("AuthContext: checkAuth", { storedToken, storedusername });
+            if (storedToken && storedusername) {
                 setToken(storedToken);
-                setUser({ email: storedEmail });
+                setUser({ username: storedusername });
             } else {
                 setToken(null);
                 setUser(null);
@@ -53,10 +53,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, [checkAuth]);
 
     const login = useCallback(
-        async (email: string, password: string, signup: boolean) => {
-            if (!email || !password) throw new Error("Email and password are required");
+        async (username: string, password: string, signup: boolean) => {
+            if (!username || !password) throw new Error("username and password are required");
 
-            console.log("AuthContext: login called", { email, signup });
+            console.log("AuthContext: login called", { username, signup });
 
             const path = signup ? "/api/register" : "/api/login";
 
@@ -66,7 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const response = await fetch(`${urlpath}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email, password }),
+                body: JSON.stringify({ username, password }),
             });
 
             if (!response.ok) {
@@ -90,11 +90,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
 
             // Update state
-            setUser({ email });
+            setUser({ username });
             setToken(token);
+            console.log("AuthContext: login successful", { username });
+            console.log(token);
+
 
             await SecureStore.setItemAsync(TONALITY_TOKEN_KEY, token);
-            await SecureStore.setItemAsync(TONALITY_USER_KEY, email);
+            await SecureStore.setItemAsync(TONALITY_USER_KEY, username);
         },
         []
     );

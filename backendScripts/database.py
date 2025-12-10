@@ -5,10 +5,10 @@ from sqlalchemy.exc import IntegrityError
 class Users (SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     spotify_refresh_token: str | None = Field(default=None)
-    email: str | None = Field(index=True, unique=True)
+    username: str | None = Field(index=True, unique=True)
     password_hash: str
 
-DATABASE_URL = "mysql+pymysql://tonality:2994@127.0.0.1:3306/tonality" # Update with your actual database URL
+DATABASE_URL = "mysql+pymysql://root:2994@localhost:3306/tonality" # Update with your actual database URL
 engine = create_engine(DATABASE_URL)
 
 def create_db_and_tables():
@@ -18,13 +18,13 @@ def get_session():
     with Session(engine) as session:
         yield session
 
-def get_user_by_email(session: Session, email: str) -> Users | None:
-    statement = select(Users).where(Users.email == email)
+def get_user_by_username(session: Session, username: str) -> Users | None:
+    statement = select(Users).where(Users.username == username)
     results = session.exec(statement)
     return results.first()
 
-def add_user(session: Session, email: str, password_hash: str) -> Users | None:
-    user = Users(email=email, password_hash=password_hash)
+def add_user(session: Session, username: str, password_hash: str) -> Users | None:
+    user = Users(username=username, password_hash=password_hash)
     session.add(user)
     try:
         session.commit()

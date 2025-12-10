@@ -12,7 +12,7 @@ export default function Index() {
   const { theme } = useTheme();
   const { login: tonalityLogin, isAuthenticated, loading } = useTonalityAuth();
   const [isSignUp, setIsSignUp] = useState(false);
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -27,13 +27,13 @@ export default function Index() {
   }, [isAuthenticated, loading, router]);
 
   const handleAuth = async () => {
-    if (!email || !password) {
-      return alert('Please enter your email and password');
+    if (!username || !password) {
+      return alert('Please enter your username and password');
     }
     try {
       setSubmitting(true);
-      console.log("LoginScreen: handleAuth", { email, isSignUp });
-      await tonalityLogin(email.trim(), password, isSignUp);
+      console.log("LoginScreen: handleAuth", { username, isSignUp });
+      await tonalityLogin(username.trim(), password, isSignUp);
       router.replace('/(tabs)');
   } catch {
       alert('Authentication failed. Please try again.');
@@ -76,11 +76,11 @@ export default function Index() {
           <View style={styles.inputsRow}>
             <TextInput
               style={styles.input}
-              placeholder="Email"
+              placeholder="username"
               placeholderTextColor={theme.colors.textMuted}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
+              value={username}
+              onChangeText={setUsername}
+              keyboardType="default"
               autoCapitalize="none"
             />
             <TextInput

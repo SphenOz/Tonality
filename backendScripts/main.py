@@ -6,7 +6,7 @@ import jwt
 from pwdlib import PasswordHash
 from passlib.context import CryptContext
 from pydantic import BaseModel
-from database import add_user, get_user_by_email, get_session
+from database import add_user, get_user_by_username, get_session
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 
@@ -38,7 +38,7 @@ app.add_middleware(
 )
 
 class registerData(BaseModel):
-    email: str
+    username: str
     password: str
 class SpotifyLinkBody(BaseModel):
     spotify_refresh_token: str
@@ -61,13 +61,13 @@ def get_current_user(token: str = Depends(oauth2_scheme), session = Depends(get_
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str | None = payload.get("sub")
-        if email is None:
+        username: str | None = payload.get("sub")
+        if username is None:
             raise credentials_exception
     except jwt.PyJWTError:
         raise credentials_exception
 
-    user = get_user_by_email(session, email)
+    user = get_user_by_username(session, username)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -82,7 +82,7 @@ async def read_root():
 @app.post("/api/register")
 async def register(form_data: registerData, session=Depends(get_session)):
     print("Registering user:", form_data)
-    existing_user = get_user_by_email(session, form_data.email)
+    existing_user = get_user_by_username(session, form_data.username)
     print("password:", form_data.password)
     hashed_password = pwd_context.hash(form_data.password)
     if existing_user:
@@ -90,32 +90,32 @@ async def register(form_data: registerData, session=Depends(get_session)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User already exists",
         )
-    user = add_user(session, form_data.email, hashed_password)
+    user = add_user(session, form_data.username, hashed_password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="User registration failed",
         )
     access_token = create_access_token(
-        data={"sub": user.email}, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        data={"sub": user.username}, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     
-    return {"email": form_data.email, "access_token": access_token, "token_type": "bearer"}
+    return {"username": form_data.username, "access_token": access_token, "token_type": "bearer"}
 
 @app.post("/api/login")
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), session = Depends(get_session),):
-    user = get_user_by_email(session, form_data.username)
+async def login(form_data: registerData, session = Depends(get_session),):
+    user = get_user_by_username(session, form_data.username)
     if not user or not pwd_context.verify(form_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Incorrect email or password",
+            detail="Incorrect username or password",
         )
     if not pwd_context.verify(form_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Incorrect email or password",
+            detail="Incorrect username or password",
         )
-    token = create_access_token(data={"sub": user.email}, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    token = create_access_token(data={"sub": user.username}, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     if user.spotify_refresh_token:
         return {"access_token": token, "token_type": "bearer", "spotify_refresh_token": user.spotify_refresh_token}
     return {"access_token": token, "token_type": "bearer"} #Spotify Refresh Token + User Access Token
