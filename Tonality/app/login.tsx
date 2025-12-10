@@ -17,7 +17,7 @@ export default function LoginScreen() {
         setError(null);
         try {
             setSubmitting(true);
-            await login(email.trim(), password);
+            //await login(email.trim(), password);
             router.replace('/(tabs)');
         } catch (e: any) {
             setError(e.message || 'Login failed');
@@ -35,7 +35,7 @@ export default function LoginScreen() {
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             >
                 <View style={styles.header}>
-                    <Text style={styles.appName}>Tonality</Text>
+                    <Text style={styles.appName}>TONALITYEEEE</Text>
                     <Text style={styles.tagline}>Sign in to your account</Text>
                 </View>
 

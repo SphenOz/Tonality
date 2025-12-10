@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
 
-const TONALITY_TOKEN_KEY = 'tonality_auth_token';
-const TONALITY_USER_KEY = 'tonality_user_email';
+const API_BASE_URL ="http://10.250.241.100:8000";
+const TONALITY_TOKEN_KEY = "TONALITY_TOKEN";
+const TONALITY_USER_KEY = "TONALITY_USER_EMAIL";
 
 interface TonalityUser {
     email: string;
@@ -13,7 +14,7 @@ interface AuthContextType {
     token: string | null;
     loading: boolean;
     isAuthenticated: boolean;
-    login: (email: string, password: string) => Promise<void>;
+    login: (email: string, password: string, signup: boolean) => Promise<void>;
     logout: () => Promise<void>;
     checkAuth: () => Promise<void>;
 }
@@ -51,18 +52,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         checkAuth();
     }, [checkAuth]);
 
-    const login = useCallback(async (email: string, password: string) => {
-        if (!email || !password) throw new Error('Email and password are required');
+    const login = useCallback(
+        async (email: string, password: string, signup: boolean) => {
+            if (!email || !password) throw new Error("Email and password are required");
 
-        const fakeToken = `mock-tonality-token-${Date.now()}`;
+            console.log("AuthContext: login called", { email, signup });
 
-        // Update state immediately
-        setUser({ email });
-        setToken(fakeToken);
+            const path = signup ? "/api/register" : "/api/login";
 
-        await SecureStore.setItemAsync(TONALITY_TOKEN_KEY, fakeToken);
-        await SecureStore.setItemAsync(TONALITY_USER_KEY, email);
-    }, []);
+            const urlpath = `${API_BASE_URL}${path}`;
+            console.log("AuthContext: login URL", urlpath);
+
+            const response = await fetch(`${urlpath}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password }),
+            });
+
+            if (!response.ok) {
+                let message = signup ? "Signup failed" : "Login failed";
+                try {
+                    const errorData = await response.json();
+                    if (errorData?.detail) {
+                    message = errorData.detail;
+                    }
+                } catch {
+                    // ignore parse error, keep default message
+                }
+                throw new Error(message);
+            }
+
+            const data = await response.json();
+            const token = data.access_token as string | undefined;
+
+            if (!token) {
+            throw new Error("No access token returned from server");
+            }
+
+            // Update state
+            setUser({ email });
+            setToken(token);
+
+            await SecureStore.setItemAsync(TONALITY_TOKEN_KEY, token);
+            await SecureStore.setItemAsync(TONALITY_USER_KEY, email);
+        },
+        []
+    );
 
     const logout = useCallback(async () => {
         console.log("AuthContext: logout called");

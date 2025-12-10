@@ -32,7 +32,8 @@ export default function Index() {
     }
     try {
       setSubmitting(true);
-      await tonalityLogin(email.trim(), password);
+      console.log("LoginScreen: handleAuth", { email, isSignUp });
+      await tonalityLogin(email.trim(), password, isSignUp);
       router.replace('/(tabs)');
   } catch {
       alert('Authentication failed. Please try again.');
