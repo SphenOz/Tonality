@@ -1,143 +1,274 @@
-import { tonalityContext } from "@/utils/tonalityContext";
-import { Button } from "@react-navigation/elements";
-import * as AuthSession from 'expo-auth-session';
-import { useRouter } from "expo-router";
-import * as SecureStore from 'expo-secure-store';
-import * as WebBrowser from 'expo-web-browser';
-import React, { useContext, useEffect, useState } from "react";
-import { Linking, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-
-WebBrowser.maybeCompleteAuthSession();
+import { useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { useTonalityAuth } from '../hooks/useTonalityAuth';
+import { useTheme } from '../context/ThemeContext';
+import type { Theme } from '../context/ThemeContext';
 
 export default function Index() {
-
-  const {profile, setProfile} = useContext(tonalityContext)!;
-
   const router = useRouter();
-  function navHome() {
-    router.push("/home");
-  }
-  const [token, setToken] = useState<string | null>(null);
+  const { theme } = useTheme();
+  const { login: tonalityLogin, isAuthenticated, loading } = useTonalityAuth();
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-const REDIRECT_URI = "https://sphenoz.github.io/callback"; //Redirect Page, do not change.
-const CLIENT_ID = "dada8bee46da49d68928a05c68828cc4"; //Client ID from my Spotify Dev App
-const CV_KEY = "spotify_pkce_cv"; //Storage location of the code verifier (Randomly generated string)
-const STATE_KEY = "spotify_oauth_state"; //Security state key
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
-//Destructed array from useAuthRequest
-const [request, , promptAsync] = AuthSession.useAuthRequest(
-  { clientId: CLIENT_ID, usePKCE: true, responseType: AuthSession.ResponseType.Code,
-    scopes: ['user-read-email','playlist-modify-public','playlist-modify-private','user-library-read'],
-    redirectUri: REDIRECT_URI, state: Math.random().toString(36).slice(2) },
-  { authorizationEndpoint: 'https://accounts.spotify.com/authorize',
-    tokenEndpoint: 'https://accounts.spotify.com/api/token' }
-);
+  useEffect(() => {
+    console.log("LoginScreen: Mounted. isAuthenticated:", isAuthenticated);
+    if (!loading && isAuthenticated) {
+      console.log("LoginScreen: User is authenticated, redirecting to tabs...");
+      router.replace('/(tabs)');
+    }
+  }, [isAuthenticated, loading, router]);
 
-// save verifier/state before opening browser (survives cold start)
-useEffect(() => {
-  if (request?.codeVerifier) SecureStore.setItemAsync(CV_KEY, request.codeVerifier);
-  if (request?.state) SecureStore.setItemAsync(STATE_KEY, request.state);
-}, [request]);
-
-useEffect(() => {
-  const onUrl = async ({ url }: { url: string }) => {
-    const u = new URL(url);
-    const code = u.searchParams.get('code');
-    const returnedState = u.searchParams.get('state');
-    if (!code) return;
-
-    const expectedState = await SecureStore.getItemAsync(STATE_KEY);
-    if (expectedState && returnedState && returnedState !== expectedState) return;
-
-    const cv = await SecureStore.getItemAsync(CV_KEY);
-    if (!cv) return;
-
-    const body = new URLSearchParams({
-      grant_type: 'authorization_code',
-      code, redirect_uri: REDIRECT_URI, client_id: CLIENT_ID, code_verifier: cv
-    }).toString();
-
-    console.log("Body:", body);
-
-    const r = await fetch('https://accounts.spotify.com/api/token', {
-      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body
-    });
-    const json = await r.json();
-    console.log(json);
-    setToken(json.access_token);
+  const handleAuth = async () => {
+    if (!username || !password) {
+      return alert('Please enter your username and password');
+    }
+    try {
+      setSubmitting(true);
+      console.log("LoginScreen: handleAuth", { username, isSignUp });
+      await tonalityLogin(username.trim(), password, isSignUp);
+      router.replace('/(tabs)');
+  } catch {
+      alert('Authentication failed. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  //The Logic is as such, there are two states for the application, cold (fresh start) and warm (already running).
-  //Linking.addEventListener adds a listener to catch a redirect when the app is already running (warm start).
-  //Linking.getInitialURL checks if the app was opened from a redirect (cold start).
-  const sub = Linking.addEventListener('url', onUrl);
-  Linking.getInitialURL().then((u) => {
-  if (u) {
-    return onUrl({ url: u }); 
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator size="large" color={theme.colors.accent} />
+      </SafeAreaView>
+    );
   }
-});
-  return () => sub.remove();
-}, []);
-  
-async function fetchProfile(): Promise<any> {
-    const result = await fetch("https://api.spotify.com/v1/me", {
-        method: "GET", headers: { Authorization: `Bearer ${token}` }
-    });
-
-    const profile = await result.json();
-    console.log(profile);
-    setProfile(profile);
-    return profile;
-}
-
-useEffect(() => {
-    if (token) {
-        fetchProfile();
-    }
-}, [token]);
 
   return (
-    <SafeAreaView
-      style={{flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#DDEEE0ff",}}>
-      {/*header*/}
-      <View 
-        style={{flex: .5, alignItems: "center", justifyContent: "flex-start"}}> 
-        <Text
-          style={{fontSize: 24, marginTop: 50, color: "#3E3E3Eff"}}>
-            Welcome to Tonality
-            {profile ? `, ${profile.display_name}` : ""}
-        </Text>
-      </View>
-      <View style={{ flex: 3, alignItems: "center", justifyContent: "flex-start" }}>
-        <View
-          style={styles["login-box"]}>
-            <Text
-              style={{fontSize: 24, marginTop: 10, marginBottom: 20, color: "#3E3E3Eff", alignSelf: "center"}}>
-                Login
-            </Text>
-            <Button style={{marginTop: 50, backgroundColor: "#a8C3A0ff"}} onPress={() => promptAsync()}> Login with Spotify </Button>
-            {/*Utilize Spotify API*/}
-            <Button style={{marginTop: 50, backgroundColor: "#a8C3A0ff"}} onPress={() => navHome()}> Go to Home </Button>
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboardView}>
+        <View style={styles.heroSection}>
+          <View style={styles.logoBadge}>
+            <Ionicons name="musical-notes" size={20} color={theme.colors.text} />
+          </View>
+          <Text style={styles.brandTitle}>Tonality</Text>
+          <Text style={styles.brandSubtitle}>Social music sharing for people who obsess over playlists.</Text>
+          <View style={styles.dividerRow}>
+            <View style={styles.divider} />
+            <Ionicons name="sparkles" size={16} color={theme.colors.textMuted} />
+            <View style={styles.divider} />
+          </View>
+          <Text style={styles.heroHighlight}>Log in or create an account in seconds.</Text>
         </View>
-       </View>
+
+        <View style={styles.formCard}>
+          <Text style={styles.formTitle}>{isSignUp ? 'Create your account' : 'Welcome back'}</Text>
+          <Text style={styles.formSubtitle}>
+            {isSignUp ? 'Start curating collaborative vibes.' : 'Pick up where your queue left off.'}
+          </Text>
+
+          <View style={styles.inputsRow}>
+            <TextInput
+              style={styles.input}
+              placeholder="username"
+              placeholderTextColor={theme.colors.textMuted}
+              value={username}
+              onChangeText={setUsername}
+              keyboardType="default"
+              autoCapitalize="none"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              placeholderTextColor={theme.colors.textMuted}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
+          </View>
+
+          <Pressable style={[styles.primaryButton, submitting && styles.primaryButtonDisabled]} onPress={handleAuth} disabled={submitting}>
+            {submitting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <Ionicons name={isSignUp ? 'sparkles' : 'log-in'} size={18} color="#fff" />
+                <Text style={styles.primaryButtonText}>{isSignUp ? 'Create account' : 'Log in'}</Text>
+              </>
+            )}
+          </Pressable>
+
+          <Pressable style={styles.switchModeButton} onPress={() => setIsSignUp(!isSignUp)}>
+            <Text style={styles.switchModeText}>
+              {isSignUp ? 'Already have an account? Sign in' : "Need an account? Sign up"}
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.supportRow}>
+          <View style={styles.supportColumn}>
+            <Text style={styles.supportLabel}>Stay synced</Text>
+            <Text style={styles.supportValue}>Link Spotify right from your dashboard.</Text>
+          </View>
+          <View style={styles.supportColumn}>
+            <Text style={styles.supportLabel}>Secure mock auth</Text>
+            <Text style={styles.supportValue}>Credentials live only on this device.</Text>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-const styles = {
-  "login-box":
-  {
-    "marginTop": 40,
-    "width": 300,
-    "height": 450,
-    "backgroundColor": "#CFE3CFFF",
-    "borderRadius": 10,
-    "padding": 15,
-    "shadowColor": "#000000",
-    "shadowOffset": { width: 0, height: 2 },
-    "shadowOpacity": 0.25,
-    "shadowRadius": 3.84,
-    "elevation": 5,
-  }
-};
+const createStyles = (theme: Theme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    keyboardView: {
+      flex: 1,
+      padding: 24,
+      justifyContent: 'center',
+    },
+    heroSection: {
+      alignItems: 'center',
+      marginBottom: 32,
+      gap: 12,
+    },
+    logoBadge: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    brandTitle: {
+      fontSize: 36,
+      fontWeight: '800',
+      color: theme.colors.text,
+      letterSpacing: 0.5,
+    },
+    brandSubtitle: {
+      fontSize: 16,
+      color: theme.colors.textMuted,
+      textAlign: 'center',
+      maxWidth: 320,
+      lineHeight: 22,
+    },
+    dividerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 12,
+    },
+    divider: {
+      flex: 1,
+      height: 1,
+      backgroundColor: theme.colors.border,
+    },
+    heroHighlight: {
+      marginTop: 4,
+      fontSize: 14,
+      color: theme.colors.textMuted,
+      textAlign: 'center',
+    },
+    formCard: {
+      backgroundColor: theme.colors.surface,
+      borderRadius: 28,
+      padding: 24,
+      shadowColor: theme.colors.shadow,
+      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: 0.45,
+      shadowRadius: 24,
+      elevation: 10,
+      marginBottom: 32,
+    },
+    formTitle: {
+      fontSize: 24,
+      fontWeight: '700',
+      color: theme.colors.text,
+      textAlign: 'center',
+    },
+    formSubtitle: {
+      fontSize: 14,
+      color: theme.colors.textMuted,
+      textAlign: 'center',
+      marginTop: 4,
+      marginBottom: 16,
+    },
+    inputsRow: {
+      gap: 12,
+    },
+    input: {
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      fontSize: 16,
+      color: theme.colors.text,
+      backgroundColor: theme.colors.surfaceMuted,
+    },
+    primaryButton: {
+      marginTop: 16,
+      borderRadius: 999,
+      backgroundColor: theme.colors.accent,
+      paddingVertical: 16,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 8,
+    },
+    primaryButtonDisabled: {
+      opacity: 0.6,
+    },
+    primaryButtonText: {
+      color: '#fff',
+      fontWeight: '700',
+      fontSize: 16,
+    },
+    switchModeButton: {
+      marginTop: 18,
+      alignSelf: 'center',
+    },
+    switchModeText: {
+      color: theme.colors.textMuted,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    supportRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      gap: 16,
+    },
+    supportColumn: {
+      flex: 1,
+      padding: 16,
+      borderRadius: 20,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    supportLabel: {
+      fontSize: 12,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+      color: theme.colors.textMuted,
+      marginBottom: 6,
+    },
+    supportValue: {
+      color: theme.colors.text,
+      fontSize: 14,
+      lineHeight: 20,
+    },
+  });

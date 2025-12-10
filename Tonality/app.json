@@ -1,8 +1,8 @@
 {
   "expo": {
-    "owner": "spheno",
+    "owner": "tonality",
     "name": "Tonality",
-    "slug": "Tonality",
+    "slug": "tonality",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -10,7 +10,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.spheno.Tonality",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -49,7 +53,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "3371d0f9-af8d-41c1-9474-e917c8588d48"
+        "projectId": "672cdf53-2a7c-4195-9662-d4e2b6b976a7"
       }
     },
     "runtimeVersion": {
