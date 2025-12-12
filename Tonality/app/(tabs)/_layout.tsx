@@ -2,10 +2,18 @@ import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { useTonalityAuth } from '../../hooks/useTonalityAuth';
+import { useEffect } from "react";
+import * as NavigationBar from "expo-navigation-bar";
 
 export default function TabLayout() {
     const { theme } = useTheme();
     const { isAuthenticated, loading } = useTonalityAuth();
+
+    // 🔥 Fix: Move nav bar calls into useEffect so they run once and not during render
+    useEffect(() => {
+        NavigationBar.setVisibilityAsync("hidden");
+        NavigationBar.setBehaviorAsync("overlay-swipe");
+    }, []);
 
     if (loading || !isAuthenticated) {
         return null;
@@ -57,18 +65,15 @@ export default function TabLayout() {
                     tabBarIcon: ({ color }) => <Ionicons name="person-circle" size={22} color={color} />,
                 }}
             />
-            {/* Hidden tabs - accessible via navigation but not shown in tab bar */}
+
+            {/* Hidden tabs */}
             <Tabs.Screen
                 name="song-of-day"
-                options={{
-                    href: null, // Hide from tab bar
-                }}
+                options={{ href: null }}
             />
             <Tabs.Screen
                 name="polls"
-                options={{
-                    href: null, // Hide from tab bar
-                }}
+                options={{ href: null }}
             />
         </Tabs>
     );

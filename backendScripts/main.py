@@ -1,6 +1,8 @@
 import os
 from datetime import datetime, timedelta, timezone
 
+from seed_data import run_seed
+
 try:
     from dotenv import load_dotenv
 
@@ -14,7 +16,7 @@ from fastapi import Depends, FastAPI, HTTPException, status
 import jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
-from backendScripts.database import (
+from database import (
     add_user, create_db_and_tables, get_session, get_user_by_username,
     get_user_friends, add_friend, remove_friend,
     get_user_communities, get_all_communities, join_community,
@@ -44,7 +46,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 @app.on_event("startup")
 def _startup() -> None:
-    create_db_and_tables()
+    run_seed()
 
 origins = [
     "http://localhost:19006",  # Expo web
@@ -208,7 +210,7 @@ async def delete_account(session=Depends(get_session), user=Depends(get_current_
 async def search_users(q: str, session=Depends(get_session), user=Depends(get_current_user)):
     """Search for users by username"""
     from sqlmodel import select
-    from backendScripts.database import Users
+    from database import Users
     
     if len(q) < 2:
         return []

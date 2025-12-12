@@ -3,7 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSpotifyAuth } from '../../hooks/useSpotifyAuth';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { fetchUserProfile, fetchUserTopTracks } from '../../api/spotify';
+import { fetchCurrentlyPlayingTrack, fetchUserProfile, fetchUserTopTracks } from '../../api/spotify';
 import { Ionicons } from '@expo/vector-icons';
 import { useTonalityAuth } from '../../hooks/useTonalityAuth';
 import { useTheme } from '../../context/ThemeContext';
@@ -36,6 +36,11 @@ export default function HomeScreen() {
         if (token) {
             fetchUserProfile(token).then(setProfile).catch(err => {
                 console.error('Error loading profile', err);
+            });
+            fetchCurrentlyPlayingTrack(token).then(data => {
+                console.log('Currently playing track:', data);
+            }).catch(err => {
+                console.error('Error fetching currently playing track:', err);
             });
         } else {
             setProfile(null);

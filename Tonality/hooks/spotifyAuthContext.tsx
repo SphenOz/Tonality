@@ -75,7 +75,14 @@ function useProvideSpotifyAuth(): SpotifyAuthContextValue {
       clientId: CLIENT_ID,
       usePKCE: true,
       responseType: AuthSession.ResponseType.Code,
-      scopes: ['user-read-email', 'user-library-read', 'user-top-read'],
+      scopes: [
+        "user-read-email",
+        "user-library-read",
+        "user-top-read",
+        "user-read-currently-playing",
+        "user-read-playback-state",
+        "user-read-recently-played"
+      ],
       redirectUri: REDIRECT_URI,
     },
     discovery

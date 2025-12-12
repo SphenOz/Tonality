@@ -20,4 +20,4 @@ const getApiBaseUrl = (): string => {
 export const API_BASE_URL = getApiBaseUrl();
 
 export const SPOTIFY_CLIENT_ID =
-  process.env.EXPO_PUBLIC_SPOTIFY_CLIENT_ID ?? 'YOUR_SPOTIFY_CLIENT_ID';
+  process.env.EXPO_PUBLIC_SPOTIFY_CLIENT_ID ?? 'dada8bee46da49d68928a05c68828cc4';

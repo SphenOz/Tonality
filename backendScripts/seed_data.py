@@ -5,7 +5,7 @@ Run this after the database is created to add sample communities and polls
 import os
 from datetime import datetime, timedelta
 from sqlmodel import Session
-from backendScripts.database import (
+from database import (
     engine, Community, Poll, PollOption, 
     create_db_and_tables
 )
