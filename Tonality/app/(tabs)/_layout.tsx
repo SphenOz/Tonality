@@ -19,6 +19,12 @@ export default function TabLayout() {
                 tabBarStyle: {
                     backgroundColor: theme.colors.tabBar,
                     borderTopColor: theme.colors.tabBorder,
+                    paddingTop: 4,
+                    height: 60,
+                },
+                tabBarLabelStyle: {
+                    fontSize: 11,
+                    fontWeight: '600',
                 },
                 headerShown: false,
             }}
@@ -27,28 +33,41 @@ export default function TabLayout() {
                 name="index"
                 options={{
                     title: 'Home',
-                    tabBarIcon: ({ color }) => <Ionicons name="home" size={22} color={color} />,
+                    tabBarIcon: ({ color }) => <Ionicons name="home" size={24} color={color} />,
                 }}
             />
             <Tabs.Screen
-                name="song-of-day"
+                name="friends"
                 options={{
-                    title: 'Song of Day',
-                    tabBarIcon: ({ color }) => <Ionicons name="musical-note" size={22} color={color} />,
+                    title: 'Friends',
+                    tabBarIcon: ({ color }) => <Ionicons name="person-add" size={22} color={color} />,
                 }}
             />
             <Tabs.Screen
-                name="polls"
+                name="community"
                 options={{
-                    title: 'Polls',
-                    tabBarIcon: ({ color }) => <Ionicons name="stats-chart" size={22} color={color} />,
+                    title: 'Community',
+                    tabBarIcon: ({ color }) => <Ionicons name="people" size={22} color={color} />,
                 }}
             />
             <Tabs.Screen
                 name="profile"
                 options={{
                     title: 'Profile',
-                    tabBarIcon: ({ color }) => <Ionicons name="person" size={22} color={color} />,
+                    tabBarIcon: ({ color }) => <Ionicons name="person-circle" size={22} color={color} />,
+                }}
+            />
+            {/* Hidden tabs - accessible via navigation but not shown in tab bar */}
+            <Tabs.Screen
+                name="song-of-day"
+                options={{
+                    href: null, // Hide from tab bar
+                }}
+            />
+            <Tabs.Screen
+                name="polls"
+                options={{
+                    href: null, // Hide from tab bar
                 }}
             />
         </Tabs>

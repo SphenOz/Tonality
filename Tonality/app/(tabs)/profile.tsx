@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Switch, Alert, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSpotifyAuth } from '../../hooks/useSpotifyAuth';
 import { useTonalityAuth } from '../../context/AuthContext';
@@ -8,14 +8,34 @@ import { ThemeMode, useTheme } from '../../context/ThemeContext';
 import type { Theme } from '../../context/ThemeContext';
 import { Image } from 'expo-image';
 import { fetchUserProfile } from '../../api/spotify';
+import { useRouter } from 'expo-router';
+import { API_BASE_URL } from '../../utils/runtimeConfig';
 
 export default function ProfileScreen() {
   const { token, promptAsync, disconnect, isLoaded } = useSpotifyAuth();
-  const { user, logout } = useTonalityAuth();
+  const { user, token: authToken, logout } = useTonalityAuth();
   const { theme, setThemeMode } = useTheme();
+  const router = useRouter();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [spotifyProfile, setSpotifyProfile] = useState<any>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  
+  // Animation values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  
+  // Privacy & Status settings
+  const [isOnline, setIsOnline] = useState(true);
+  const [showListeningActivity, setShowListeningActivity] = useState(true);
+  const [allowFriendRequests, setAllowFriendRequests] = useState(true);
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 400,
+      useNativeDriver: true,
+    }).start();
+  }, [fadeAnim]);
 
   useEffect(() => {
     if (!token) {
@@ -148,15 +168,128 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Online Status & Privacy Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Status & Privacy</Text>
+          <View style={styles.card}>
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <View style={styles.settingLabelRow}>
+                  <Ionicons name="radio-button-on" size={18} color={isOnline ? theme.colors.accent : theme.colors.textMuted} />
+                  <Text style={styles.settingLabel}>Online Status</Text>
+                </View>
+                <Text style={styles.settingHint}>Show friends when you're active</Text>
+              </View>
+              <Switch
+                value={isOnline}
+                onValueChange={setIsOnline}
+                trackColor={{ false: theme.colors.surfaceMuted, true: theme.colors.accentMuted }}
+                thumbColor={isOnline ? theme.colors.accent : theme.colors.textMuted}
+              />
+            </View>
+
+            <View style={styles.divider} />
+
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <View style={styles.settingLabelRow}>
+                  <Ionicons name="musical-notes" size={18} color={theme.colors.text} />
+                  <Text style={styles.settingLabel}>Show Listening Activity</Text>
+                </View>
+                <Text style={styles.settingHint}>Let friends see what you're playing</Text>
+              </View>
+              <Switch
+                value={showListeningActivity}
+                onValueChange={setShowListeningActivity}
+                trackColor={{ false: theme.colors.surfaceMuted, true: theme.colors.accentMuted }}
+                thumbColor={showListeningActivity ? theme.colors.accent : theme.colors.textMuted}
+              />
+            </View>
+
+            <View style={styles.divider} />
+
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <View style={styles.settingLabelRow}>
+                  <Ionicons name="person-add" size={18} color={theme.colors.text} />
+                  <Text style={styles.settingLabel}>Allow Friend Requests</Text>
+                </View>
+                <Text style={styles.settingHint}>Others can send you friend requests</Text>
+              </View>
+              <Switch
+                value={allowFriendRequests}
+                onValueChange={setAllowFriendRequests}
+                trackColor={{ false: theme.colors.surfaceMuted, true: theme.colors.accentMuted }}
+                thumbColor={allowFriendRequests ? theme.colors.accent : theme.colors.textMuted}
+              />
+            </View>
+          </View>
+        </View>
+
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Session</Text>
           <View style={styles.cardDanger}>
             <Text style={styles.helperText}>
               Logging out removes your Tonality session from this device but keeps Spotify linked until you disconnect above.
             </Text>
-            <Pressable style={styles.logoutButton} onPress={logout}>
+            <Pressable style={styles.logoutButton} onPress={async () => {
+              await logout();
+              router.replace('/');
+            }}>
               <Ionicons name="exit" size={18} color="#fff" />
               <Text style={styles.logoutText}>Log out</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {/* Delete Account Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Danger Zone</Text>
+          <View style={styles.cardDanger}>
+            <Text style={styles.helperText}>
+              Deleting your account is permanent and cannot be undone. All your data, friends, and listening history will be removed.
+            </Text>
+            <Pressable 
+              style={[styles.deleteButton, deletingAccount && { opacity: 0.6 }]} 
+              disabled={deletingAccount}
+              onPress={() => {
+                Alert.alert(
+                  'Delete Account',
+                  'Are you sure you want to permanently delete your Tonality account? This action cannot be undone.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { 
+                      text: 'Delete', 
+                      style: 'destructive',
+                      onPress: async () => {
+                        if (!authToken) return;
+                        setDeletingAccount(true);
+                        try {
+                          const res = await fetch(`${API_BASE_URL}/api/user/account`, {
+                            method: 'DELETE',
+                            headers: { Authorization: `Bearer ${authToken}` },
+                          });
+                          if (!res.ok) throw new Error('Failed to delete account');
+                          await logout();
+                          router.replace('/');
+                        } catch (err) {
+                          console.error('Failed to delete account:', err);
+                          Alert.alert('Error', 'Failed to delete account. Please try again.');
+                        } finally {
+                          setDeletingAccount(false);
+                        }
+                      }
+                    },
+                  ]
+                );
+              }}
+            >
+              {deletingAccount ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="trash" size={18} color="#fff" />
+              )}
+              <Text style={styles.logoutText}>{deletingAccount ? 'Deleting...' : 'Delete Account'}</Text>
             </Pressable>
           </View>
         </View>
@@ -318,5 +451,43 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: 15,
+  },
+  deleteButton: {
+    backgroundColor: '#B91C1C',
+    borderRadius: 999,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  settingInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  settingLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  settingLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: theme.colors.text,
+  },
+  settingHint: {
+    fontSize: 12,
+    color: theme.colors.textMuted,
+    marginLeft: 26,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: theme.colors.border,
+    marginVertical: 4,
   },
 });

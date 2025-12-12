@@ -1,3 +1,26 @@
 /backendPC
 /backendVENV
 /.backendTonality
+
+# local env files
+.env
+.env.*
+backendScripts/.env
+Tonality/.env
+Tonality/.env.*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+.expo/
+dist/
+web-build/
+
+# OS
+.DS_Store

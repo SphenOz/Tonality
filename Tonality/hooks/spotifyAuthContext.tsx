@@ -12,10 +12,11 @@ import React, {
   useState,
 } from 'react';
 import { useTonalityAuth } from '../context/AuthContext';
+import { API_BASE_URL, SPOTIFY_CLIENT_ID } from '../utils/runtimeConfig';
 
 WebBrowser.maybeCompleteAuthSession();
 
-const CLIENT_ID = 'dada8bee46da49d68928a05c68828cc4';
+const CLIENT_ID = SPOTIFY_CLIENT_ID;
 const CV_KEY = 'spotify_pkce_cv';
 const STATE_KEY = 'spotify_oauth_state';
 const TOKEN_KEY = 'spotify_access_token';
@@ -23,9 +24,6 @@ const REDIRECT_PATH = 'profile';
 const IS_EXPO_GO = Constants.executionEnvironment === 'storeClient';
 const REDIRECT_URI = AuthSession.makeRedirectUri({ path: REDIRECT_PATH });
 const USE_PROXY = IS_EXPO_GO;
-
-// ⭐ backend base URL (adjust to your env)
-const API_BASE_URL = 'http://10.250.196.103:8000';
 
 console.log(
   '[SpotifyAuth] redirectUri:',

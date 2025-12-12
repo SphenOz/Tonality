@@ -35,8 +35,8 @@ export default function Index() {
       console.log("LoginScreen: handleAuth", { username, isSignUp });
       await tonalityLogin(username.trim(), password, isSignUp);
       router.replace('/(tabs)');
-  } catch {
-      alert('Authentication failed. Please try again.');
+    } catch (error: any) {
+      alert(error.message || 'Authentication failed. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -55,16 +55,11 @@ export default function Index() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboardView}>
         <View style={styles.heroSection}>
           <View style={styles.logoBadge}>
-            <Ionicons name="musical-notes" size={20} color={theme.colors.text} />
+            <Ionicons name="musical-notes" size={28} color="#fff" />
           </View>
           <Text style={styles.brandTitle}>Tonality</Text>
+          <Text style={styles.brandTagline}>Share • Discover • Connect</Text>
           <Text style={styles.brandSubtitle}>Social music sharing for people who obsess over playlists.</Text>
-          <View style={styles.dividerRow}>
-            <View style={styles.divider} />
-            <Ionicons name="sparkles" size={16} color={theme.colors.textMuted} />
-            <View style={styles.divider} />
-          </View>
-          <Text style={styles.heroHighlight}>Log in or create an account in seconds.</Text>
         </View>
 
         <View style={styles.formCard}>
@@ -143,49 +138,45 @@ const createStyles = (theme: Theme) =>
       gap: 12,
     },
     logoBadge: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
+      width: 72,
+      height: 72,
+      borderRadius: 36,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.accent,
+      shadowColor: theme.colors.accent,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.4,
+      shadowRadius: 16,
+      elevation: 8,
     },
     brandTitle: {
-      fontSize: 36,
+      fontSize: 42,
       fontWeight: '800',
       color: theme.colors.text,
-      letterSpacing: 0.5,
+      letterSpacing: 1,
+    },
+    brandTagline: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: theme.colors.accent,
+      letterSpacing: 2,
+      textTransform: 'uppercase',
     },
     brandSubtitle: {
       fontSize: 16,
       color: theme.colors.textMuted,
       textAlign: 'center',
-      maxWidth: 320,
+      maxWidth: 300,
       lineHeight: 22,
-    },
-    dividerRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      marginTop: 12,
-    },
-    divider: {
-      flex: 1,
-      height: 1,
-      backgroundColor: theme.colors.border,
-    },
-    heroHighlight: {
-      marginTop: 4,
-      fontSize: 14,
-      color: theme.colors.textMuted,
-      textAlign: 'center',
+      marginTop: 8,
     },
     formCard: {
       backgroundColor: theme.colors.surface,
       borderRadius: 28,
       padding: 24,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
       shadowColor: theme.colors.shadow,
       shadowOffset: { width: 0, height: 12 },
       shadowOpacity: 0.45,
@@ -194,7 +185,7 @@ const createStyles = (theme: Theme) =>
       marginBottom: 32,
     },
     formTitle: {
-      fontSize: 24,
+      fontSize: 26,
       fontWeight: '700',
       color: theme.colors.text,
       textAlign: 'center',

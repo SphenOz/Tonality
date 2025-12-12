@@ -1,20 +1,35 @@
-import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSpotifyAuth } from '../../hooks/useSpotifyAuth';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { fetchUserProfile } from '../../api/spotify';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { fetchUserProfile, fetchUserTopTracks } from '../../api/spotify';
 import { Ionicons } from '@expo/vector-icons';
 import { useTonalityAuth } from '../../hooks/useTonalityAuth';
 import { useTheme } from '../../context/ThemeContext';
 import type { Theme } from '../../context/ThemeContext';
 
+// Mock data for popular songs by genre
+const mockPopularByGenre = [
+    { genre: 'Indie', songs: [{ name: 'Little Dark Age', artist: 'MGMT' }, { name: 'Heat Waves', artist: 'Glass Animals' }] },
+    { genre: 'Electronic', songs: [{ name: 'Midnight City', artist: 'M83' }, { name: 'Strobe', artist: 'Deadmau5' }] },
+    { genre: 'Pop', songs: [{ name: 'Blinding Lights', artist: 'The Weeknd' }, { name: 'Levitating', artist: 'Dua Lipa' }] },
+];
+
+// Mock recommended songs
+const mockRecommended = [
+    { name: 'Dissolve', artist: 'Absofacto', reason: 'Because you like MGMT' },
+    { name: 'Sweater Weather', artist: 'The Neighbourhood', reason: 'Popular with your friends' },
+    { name: 'Electric Feel', artist: 'MGMT', reason: 'Based on your top tracks' },
+];
+
 export default function HomeScreen() {
     const { token, promptAsync } = useSpotifyAuth();
-        const { user, isAuthenticated, loading } = useTonalityAuth();
+    const { user, isAuthenticated, loading } = useTonalityAuth();
     const { theme } = useTheme();
     const styles = useMemo(() => createStyles(theme), [theme]);
     const [profile, setProfile] = useState<any>(null);
+    const [songOfDay, setSongOfDay] = useState<any>(null);
     const routerInstance = useRouter();
 
     useEffect(() => {
@@ -27,18 +42,34 @@ export default function HomeScreen() {
         }
     }, [token]);
 
+    const loadSongOfDay = useCallback(async () => {
+        if (!token) return;
+        try {
+            const data = await fetchUserTopTracks(token, 'short_term', 20);
+            if (data?.items && data.items.length > 0) {
+                const randomIndex = Math.floor(Math.random() * data.items.length);
+                setSongOfDay(data.items[randomIndex]);
+            }
+        } catch (error) {
+            console.error('Error loading song of day:', error);
+        }
+    }, [token]);
+
+    useEffect(() => {
+        if (token) {
+            loadSongOfDay();
+        } else {
+            setSongOfDay(null);
+        }
+    }, [token, loadSongOfDay]);
+
     useEffect(() => {
         if (!loading && !isAuthenticated) {
-            console.log("HomeScreen: effect redirecting to login");
             routerInstance.replace('/');
         }
     }, [loading, isAuthenticated, routerInstance]);
 
-    if (loading) {
-        return null;
-    }
-
-    if (!isAuthenticated) {
+    if (loading || !isAuthenticated) {
         return null;
     }
 
@@ -48,106 +79,128 @@ export default function HomeScreen() {
         }
     };
 
-    const goToSongOfDay = () => {
-        routerInstance.push('/(tabs)/song-of-day');
-    };
-
-    const goToPolls = () => {
-        routerInstance.push('/(tabs)/polls');
-    };
-
     const isConnected = Boolean(token);
 
     return (
         <SafeAreaView style={styles.container}>
             <ScrollView contentContainerStyle={styles.scrollContent}>
+                {/* Header */}
                 <View style={styles.header}>
                     <View style={styles.headerBadge}>
                         <Ionicons name="sparkles" size={14} color={theme.colors.accent} />
                         <Text style={styles.headerBadgeText}>Good to see you, {user?.username?.split('@')[0] || 'friend'}</Text>
                     </View>
                     <Text style={styles.appName}>Tonality</Text>
-                    <Text style={styles.tagline}>Symmetric social listening for every vibe.</Text>
 
                     {isConnected ? (
                         <View style={styles.connectedBadge}>
-                            <Ionicons name="musical-note" size={18} color={theme.colors.accent} />
+                            <Ionicons name="musical-note" size={16} color={theme.colors.accent} />
                             <Text style={styles.connectedText}>
                                 Connected as {profile?.display_name || 'Spotify User'}
                             </Text>
                         </View>
                     ) : (
-                        <Text style={styles.connectHint}>
-                            Connect your Spotify to get a personalized Song of the Day and better
-                            recommendations.
-                        </Text>
-                    )}
-
-                    {!isConnected && (
-                        <Pressable style={styles.primaryButton} onPress={handleConnect}>
-                            <Ionicons name="link" size={20} color="#fff" />
-                            <Text style={styles.primaryButtonText}>Link Spotify to Tonality</Text>
-                        </Pressable>
+                        <>
+                            <Text style={styles.connectHint}>
+                                Connect Spotify for personalized recommendations
+                            </Text>
+                            <Pressable style={styles.primaryButton} onPress={handleConnect}>
+                                <Ionicons name="link" size={20} color="#fff" />
+                                <Text style={styles.primaryButtonText}>Link Spotify</Text>
+                            </Pressable>
+                        </>
                     )}
                 </View>
 
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Jump back in</Text>
-
-                    <View style={styles.cardsRow}>
-                        <Pressable style={styles.featureCard} onPress={goToSongOfDay}>
-                            <View style={styles.featureIconCircle}>
-                                <Ionicons name="musical-notes" size={22} color={theme.colors.text} />
-                            </View>
-                            <Text style={styles.featureTitle}>Song of the Day</Text>
-                            <Text style={styles.featureSubtitle}>
-                                Get a daily pick based on your recent listening.
-                            </Text>
-                        </Pressable>
-
-                        <Pressable style={styles.featureCard} onPress={goToPolls}>
-                            <View style={styles.featureIconCircle}>
-                                <Ionicons name="stats-chart" size={22} color={theme.colors.text} />
-                            </View>
-                            <Text style={styles.featureTitle}>Weekly Polls</Text>
-                            <Text style={styles.featureSubtitle}>
-                                Vote on tracks and see what the community loves.
-                            </Text>
-                        </Pressable>
-                    </View>
-                </View>
-
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Friend activity (mock)</Text>
-                    <View style={styles.activityCard}>
-                        <View style={styles.activityRow}>
-                            <Ionicons name="person-circle" size={22} color="#3E3E3E" />
-                            <View style={styles.activityTextContainer}>
-                                <Text style={styles.activityPrimary}>Alex voted for Little Dark Age</Text>
-                                <Text style={styles.activitySecondary}>in Best Indie Track This Week</Text>
-                            </View>
+                {/* Song of the Day */}
+                {isConnected && songOfDay && (
+                    <View style={styles.section}>
+                        <View style={styles.sectionHeader}>
+                            <Ionicons name="sunny" size={18} color={theme.colors.accent} />
+                            <Text style={styles.sectionTitle}>Song of the Day</Text>
                         </View>
-                        <View style={styles.activityRow}>
-                            <Ionicons name="person-circle" size={22} color="#3E3E3E" />
-                            <View style={styles.activityTextContainer}>
-                                <Text style={styles.activityPrimary}>Sam shared Heat Waves</Text>
-                                <Text style={styles.activitySecondary}>with 5 friends</Text>
-                            </View>
-                        </View>
-                        <View style={styles.activityRow}>
-                            <Ionicons name="person-circle" size={22} color="#3E3E3E" />
-                            <View style={styles.activityTextContainer}>
-                                <Text style={styles.activityPrimary}>Jordan is listening to Electric Feel</Text>
-                                <Text style={styles.activitySecondary}>right now</Text>
+                        <View style={styles.sotdCard}>
+                            {songOfDay.album?.images?.[0]?.url && (
+                                <Image
+                                    source={{ uri: songOfDay.album.images[0].url }}
+                                    style={styles.sotdImage}
+                                />
+                            )}
+                            <View style={styles.sotdInfo}>
+                                <Text style={styles.sotdName} numberOfLines={1}>{songOfDay.name}</Text>
+                                <Text style={styles.sotdArtist} numberOfLines={1}>
+                                    {songOfDay.artists?.map((a: any) => a.name).join(', ')}
+                                </Text>
+                                <Pressable style={styles.playButton} onPress={loadSongOfDay}>
+                                    <Ionicons name="refresh" size={14} color={theme.colors.accent} />
+                                    <Text style={styles.playButtonText}>Refresh</Text>
+                                </Pressable>
                             </View>
                         </View>
                     </View>
-                    <Text style={styles.mockNote}>
-                        These events are currently mocked. In the full project they will come from a
-                        FastAPI + MySQL backend.
-                    </Text>
+                )}
+
+                {/* Popular Songs by Genre */}
+                <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                        <Ionicons name="flame" size={18} color={theme.colors.accent} />
+                        <Text style={styles.sectionTitle}>Popular in Your Genres</Text>
+                    </View>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                        {mockPopularByGenre.map((genre, idx) => (
+                            <View key={idx} style={styles.genreCard}>
+                                <Text style={styles.genreName}>{genre.genre}</Text>
+                                {genre.songs.map((song, sIdx) => (
+                                    <View key={sIdx} style={styles.genreSongRow}>
+                                        <Text style={styles.genreSongNumber}>{sIdx + 1}</Text>
+                                        <View style={styles.genreSongInfo}>
+                                            <Text style={styles.genreSongName} numberOfLines={1}>{song.name}</Text>
+                                            <Text style={styles.genreSongArtist} numberOfLines={1}>{song.artist}</Text>
+                                        </View>
+                                    </View>
+                                ))}
+                            </View>
+                        ))}
+                    </ScrollView>
                 </View>
 
+                {/* Recommended for You */}
+                <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                        <Ionicons name="heart" size={18} color={theme.colors.accent} />
+                        <Text style={styles.sectionTitle}>Recommended for You</Text>
+                    </View>
+                    {mockRecommended.map((song, idx) => (
+                        <View key={idx} style={styles.recommendedCard}>
+                            <View style={styles.recommendedIcon}>
+                                <Ionicons name="musical-note" size={20} color={theme.colors.accent} />
+                            </View>
+                            <View style={styles.recommendedInfo}>
+                                <Text style={styles.recommendedName}>{song.name}</Text>
+                                <Text style={styles.recommendedArtist}>{song.artist}</Text>
+                                <Text style={styles.recommendedReason}>{song.reason}</Text>
+                            </View>
+                            <Pressable style={styles.addButton}>
+                                <Ionicons name="add" size={20} color={theme.colors.accent} />
+                            </Pressable>
+                        </View>
+                    ))}
+                </View>
+
+                {/* Quick Links */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Quick Links</Text>
+                    <View style={styles.quickLinksRow}>
+                        <Pressable style={styles.quickLinkCard} onPress={() => routerInstance.push('/(tabs)/community')}>
+                            <Ionicons name="people" size={24} color={theme.colors.accent} />
+                            <Text style={styles.quickLinkText}>Community</Text>
+                        </Pressable>
+                        <Pressable style={styles.quickLinkCard} onPress={() => routerInstance.push('/(tabs)/friends')}>
+                            <Ionicons name="person-add" size={24} color={theme.colors.accent} />
+                            <Text style={styles.quickLinkText}>Friends</Text>
+                        </Pressable>
+                    </View>
+                </View>
             </ScrollView>
         </SafeAreaView>
     );
@@ -161,12 +214,11 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     scrollContent: {
         padding: 24,
         paddingBottom: 64,
+        gap: 28,
     },
     header: {
-        marginTop: 8,
-        marginBottom: 32,
         alignItems: 'center',
-        gap: 12,
+        gap: 10,
     },
     headerBadge: {
         flexDirection: 'row',
@@ -185,132 +237,206 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         fontWeight: '600',
     },
     appName: {
-        fontSize: 34,
+        fontSize: 32,
         fontWeight: '800',
         color: theme.colors.text,
-        textAlign: 'center',
-    },
-    tagline: {
-        marginTop: 4,
-        fontSize: 16,
-        color: theme.colors.textMuted,
         textAlign: 'center',
     },
     connectedBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginTop: 18,
+        marginTop: 8,
         backgroundColor: theme.colors.accentMuted,
-        paddingHorizontal: 16,
-        paddingVertical: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 8,
         borderRadius: 999,
         borderWidth: 1,
         borderColor: theme.colors.accent,
-        gap: 8,
+        gap: 6,
     },
     connectedText: {
-        fontSize: 14,
+        fontSize: 13,
         color: theme.colors.accent,
         fontWeight: '600',
     },
     connectHint: {
-        marginTop: 20,
+        marginTop: 8,
         fontSize: 14,
         color: theme.colors.textMuted,
         textAlign: 'center',
-        lineHeight: 20,
     },
     primaryButton: {
-        marginTop: 20,
+        marginTop: 12,
         backgroundColor: theme.colors.accent,
-        paddingVertical: 16,
+        paddingVertical: 14,
         paddingHorizontal: 24,
-        borderRadius: 32,
+        borderRadius: 999,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 10,
-        alignSelf: 'stretch',
-        justifyContent: 'center',
+        gap: 8,
     },
     primaryButtonText: {
         color: '#fff',
-        fontSize: 16,
+        fontSize: 15,
         fontWeight: '700',
     },
     section: {
-        marginBottom: 32,
+        gap: 12,
+    },
+    sectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
     },
     sectionTitle: {
-        fontSize: 20,
+        fontSize: 18,
         fontWeight: '700',
         color: theme.colors.text,
-        marginBottom: 16,
-        textAlign: 'center',
     },
-    cardsRow: {
+    // Song of the Day
+    sotdCard: {
         flexDirection: 'row',
-        gap: 16,
-    },
-    featureCard: {
-        flex: 1,
         backgroundColor: theme.colors.surface,
-        borderRadius: 24,
-        padding: 20,
-        alignItems: 'center',
-        gap: 12,
+        borderRadius: 20,
+        padding: 16,
         borderWidth: 1,
         borderColor: theme.colors.border,
+        gap: 16,
+        alignItems: 'center',
     },
-    featureIconCircle: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
+    sotdImage: {
+        width: 80,
+        height: 80,
+        borderRadius: 12,
+    },
+    sotdInfo: {
+        flex: 1,
+        gap: 4,
+    },
+    sotdName: {
+        fontSize: 17,
+        fontWeight: '700',
+        color: theme.colors.text,
+    },
+    sotdArtist: {
+        fontSize: 14,
+        color: theme.colors.textMuted,
+    },
+    playButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        marginTop: 8,
+    },
+    playButtonText: {
+        fontSize: 13,
+        color: theme.colors.accent,
+        fontWeight: '600',
+    },
+    // Genre cards
+    genreCard: {
+        width: 180,
+        backgroundColor: theme.colors.surface,
+        borderRadius: 16,
+        padding: 16,
+        marginRight: 12,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        gap: 10,
+    },
+    genreName: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: theme.colors.accent,
+        marginBottom: 4,
+    },
+    genreSongRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    genreSongNumber: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: theme.colors.textMuted,
+        width: 20,
+    },
+    genreSongInfo: {
+        flex: 1,
+    },
+    genreSongName: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: theme.colors.text,
+    },
+    genreSongArtist: {
+        fontSize: 12,
+        color: theme.colors.textMuted,
+    },
+    // Recommended
+    recommendedCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.colors.surface,
+        borderRadius: 16,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        gap: 12,
+    },
+    recommendedIcon: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
         backgroundColor: theme.colors.accentMuted,
         alignItems: 'center',
         justifyContent: 'center',
     },
-    featureTitle: {
-        fontSize: 16,
-        fontWeight: '700',
-        color: theme.colors.text,
-        textAlign: 'center',
+    recommendedInfo: {
+        flex: 1,
+        gap: 2,
     },
-    featureSubtitle: {
+    recommendedName: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: theme.colors.text,
+    },
+    recommendedArtist: {
         fontSize: 13,
         color: theme.colors.textMuted,
-        textAlign: 'center',
-        lineHeight: 18,
     },
-    activityCard: {
-        backgroundColor: theme.colors.surface,
-        borderRadius: 24,
-        padding: 20,
+    recommendedReason: {
+        fontSize: 11,
+        color: theme.colors.accent,
+        fontStyle: 'italic',
+    },
+    addButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
         borderWidth: 1,
-        borderColor: theme.colors.border,
-        gap: 16,
-    },
-    activityRow: {
-        flexDirection: 'row',
+        borderColor: theme.colors.accent,
         alignItems: 'center',
+        justifyContent: 'center',
+    },
+    // Quick links
+    quickLinksRow: {
+        flexDirection: 'row',
         gap: 12,
     },
-    activityTextContainer: {
+    quickLinkCard: {
         flex: 1,
+        backgroundColor: theme.colors.surface,
+        borderRadius: 16,
+        padding: 20,
+        alignItems: 'center',
+        gap: 8,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
     },
-    activityPrimary: {
-        fontSize: 15,
-        color: theme.colors.text,
+    quickLinkText: {
+        fontSize: 14,
         fontWeight: '600',
-    },
-    activitySecondary: {
-        fontSize: 13,
-        color: theme.colors.textMuted,
-    },
-    mockNote: {
-        marginTop: 12,
-        fontSize: 12,
-        color: theme.colors.textMuted,
-        textAlign: 'center',
-        fontStyle: 'italic',
+        color: theme.colors.text,
     },
 });
