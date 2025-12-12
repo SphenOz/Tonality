@@ -96,10 +96,10 @@ export default function ProfileScreen() {
                 <Text style={styles.connectionValue}>
                   {spotifyProfile?.display_name || 'Spotify User'}
                 </Text>
-                <Text style={styles.connectionEmail}>{spotifyProfile?.username}</Text>
+                <Text style={styles.connectionEmail}>{spotifyProfile?.email || spotifyProfile?.id}</Text>
               </View>
             )}
-            {isConnected && spotifyProfile?.externalurls?.spotify && (
+            {isConnected && spotifyProfile?.external_urls?.spotify && (
               <Pressable style={styles.secondaryButton} onPress={openSpotifyProfile}>
                 <Ionicons name="open-outline" size={16} color={theme.colors.accent} />
                 <Text style={styles.secondaryButtonText}>View in Spotify</Text>
