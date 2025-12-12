@@ -5,15 +5,63 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import type { Theme } from '../../context/ThemeContext';
-import { useTonalityAuth } from '../../hooks/useTonalityAuth';
-import { getCommunities, getActivePolls, generateWeeklyPolls, Community, Poll } from '../../api/tonality';
+import { API_BASE_URL } from '../../utils/runtimeConfig';
+import { useTonalityAuth } from '../../context/AuthContext';
+import { getCommunities, getActivePolls, generateWeeklyPolls } from '../../api/tonality';
 
+/* ────────────────────────────────────────────── */
+/*                API HELPERS                     */
+/* ────────────────────────────────────────────── */
+
+async function apiFetch(path: string, token?: string, options: RequestInit = {}) {
+    console.log(`🌐 FETCH → ${API_BASE_URL}${path}`);
+
+    try {
+        const res = await fetch(`${API_BASE_URL}${path}`, {
+            ...options,
+            headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                ...(options.headers ?? {})
+            }
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            console.error("❌ API ERROR:", res.status, err);
+            throw new Error(err.detail || "API request failed");
+        }
+
+        return res.json();
+    } catch (err) {
+        console.error(`❌ Network/API Failure @ ${path}:`, err);
+        throw err;
+    }
+}
+
+const getMyCommunities = (token: string) => apiFetch(`/api/communities/my`, token);
+const joinCommunity = (id: number, token: string) =>
+    apiFetch(`/api/communities/${id}/join`, token, { method: "POST" });
+
+const voteOnPoll = (pollId: number, optionId: number, token: string) =>
+    apiFetch(`/api/polls/${pollId}/vote`, token, {
+        method: "POST",
+        body: JSON.stringify({ option_id: optionId })
+    });
+
+
+/* ────────────────────────────────────────────── */
+/*               COMMUNITY SCREEN                  */
+/* ────────────────────────────────────────────── */
 export default function CommunityScreen() {
-    const [communities, setCommunities] = useState<Community[]>([]);
-    const [activePolls, setActivePolls] = useState<Poll[]>([]);
+    const [communities, setCommunities] = useState<any[]>([]);
+    const [myCommunities, setMyCommunities] = useState<any[]>([]);
+    const [activePolls, setActivePolls] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [generating, setGenerating] = useState(false);
+    const [userVote, setUserVote] = useState<number | undefined>();
+    
     const { theme } = useTheme();
     const styles = useMemo(() => createStyles(theme), [theme]);
     const { token } = useTonalityAuth();
@@ -21,13 +69,20 @@ export default function CommunityScreen() {
 
     const loadData = useCallback(async () => {
         if (!token) return;
+        console.log("🔄 Loading Community Data…");
+        
         try {
-            const [communitiesData, pollsData] = await Promise.all([
+            const [allCommunities, myComms, polls] = await Promise.all([
                 getCommunities(token),
+                getMyCommunities(token),
                 getActivePolls(token)
             ]);
-            setCommunities(communitiesData);
-            setActivePolls(pollsData);
+            
+            setCommunities(allCommunities);
+            setMyCommunities(myComms);
+            setActivePolls(polls);
+            
+            console.log("✓ Loaded:", allCommunities.length, "communities,", polls.length, "polls");
         } catch (error) {
             console.error('Error loading community data:', error);
         } finally {
@@ -60,6 +115,36 @@ export default function CommunityScreen() {
 
     const handleCommunityPress = (communityId: number) => {
         router.push(`/community/${communityId}`);
+    };
+
+    const handleJoin = async (communityId: number) => {
+        if (!token) {
+            console.warn("⚠️ Cannot join — no auth token");
+            return;
+        }
+
+        try {
+            console.log(`➡️ Joining Community ${communityId}`);
+            await joinCommunity(communityId, token);
+            loadData();
+        } catch (err) {
+            console.error("❌ Join failed:", err);
+        }
+    };
+
+    const handleVote = async (pollId: number, songOptionId: number) => {
+        if (!token) {
+            console.warn("⚠️ Cannot vote — missing token");
+            return;
+        }
+
+        try {
+            await voteOnPoll(pollId, songOptionId, token);
+            setUserVote(songOptionId);
+            loadData();
+        } catch (err) {
+            console.error("❌ Vote failed:", err);
+        }
     };
 
     if (loading) {
@@ -99,15 +184,16 @@ export default function CommunityScreen() {
                     <Text style={styles.subtitle}>Polls, playlists, and community picks</Text>
                 </View>
 
-                {/* Communities Section */}
+                {/* My Communities */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Your Communities</Text>
-                    {communities.length === 0 ? (
+                    
+                    {myCommunities.length === 0 ? (
                         <View style={styles.emptyState}>
-                            <Text style={styles.emptyStateText}>No communities found</Text>
+                            <Text style={styles.emptyStateText}>No communities yet</Text>
                         </View>
                     ) : (
-                        communities.map((community) => (
+                        myCommunities.map((community) => (
                             <Pressable 
                                 key={community.id} 
                                 style={styles.communityCard}
@@ -126,10 +212,29 @@ export default function CommunityScreen() {
                             </Pressable>
                         ))
                     )}
-                    <Pressable style={styles.joinButton}>
-                        <Ionicons name="add" size={18} color={theme.colors.accent} />
-                        <Text style={styles.joinButtonText}>Discover Communities</Text>
-                    </Pressable>
+                    
+                    {/* Discover Communities */}
+                    <Text style={styles.sectionTitle}>Discover Communities</Text>
+                    {communities
+                        .filter(c => !myCommunities.some(m => m.id === c.id))
+                        .map(comm => (
+                            <Pressable
+                                key={comm.id}
+                                style={styles.communityCard}
+                                onPress={() => handleJoin(comm.id)}
+                            >
+                                <View style={styles.communityRow}>
+                                    <View style={styles.communityIcon}>
+                                        <Ionicons name={comm.icon_name || "add"} size={20} color={theme.colors.accent} />
+                                    </View>
+                                    <View style={styles.communityInfo}>
+                                        <Text style={styles.communityName}>{comm.name}</Text>
+                                        <Text style={styles.communityMembers}>{comm.member_count} members</Text>
+                                    </View>
+                                    <Ionicons name="add-circle-outline" size={20} color={theme.colors.accent} />
+                                </View>
+                            </Pressable>
+                        ))}
                 </View>
 
                 {/* Active Polls Section */}
@@ -140,18 +245,46 @@ export default function CommunityScreen() {
                             <Text style={styles.emptyStateText}>No active polls</Text>
                         </View>
                     ) : (
-                        activePolls.map((poll) => (
-                            <Pressable key={poll.id} style={styles.pollCard}>
-                                <View style={styles.pollHeader}>
+                        activePolls.map((poll) => {
+                            const totalVotes = poll.options?.reduce((sum: number, opt: any) => sum + (opt.votes || 0), 0) || 0;
+                            
+                            return (
+                                <View key={poll.id} style={styles.pollCard}>
                                     <Text style={styles.pollTitle}>{poll.title}</Text>
-                                    <View style={styles.pollBadge}>
-                                        <Text style={styles.pollBadgeText}>Active</Text>
-                                    </View>
+                                    
+                                    {poll.options?.map((option: any) => {
+                                        const percentage = totalVotes > 0 ? (option.votes / totalVotes) * 100 : 0;
+                                        const isVoted = userVote === option.id;
+
+                                        return (
+                                            <Pressable
+                                                key={option.id}
+                                                style={[styles.songOption, isVoted && styles.songOptionVoted]}
+                                                onPress={() => handleVote(poll.id, option.id)}
+                                            >
+                                                <View style={styles.songInfo}>
+                                                    <Text style={styles.songName}>{option.song_name || option.name}</Text>
+                                                    <Text style={styles.artistName}>{option.artist_name || option.artist}</Text>
+                                                </View>
+
+                                                <View style={styles.voteInfo}>
+                                                    {isVoted && (
+                                                        <Ionicons name="checkmark-circle" size={20} color={theme.colors.accent} />
+                                                    )}
+                                                    <Text style={styles.percentage}>{percentage.toFixed(0)}%</Text>
+                                                </View>
+
+                                                <View style={styles.progressBarContainer}>
+                                                    <View style={[styles.progressBar, { width: `${percentage}%` }]} />
+                                                </View>
+                                            </Pressable>
+                                        );
+                                    })}
+
+                                    <Text style={styles.totalVotes}>{totalVotes} total votes</Text>
                                 </View>
-                                <Text style={styles.pollDescription}>{poll.description}</Text>
-                                <Text style={styles.pollEnds}>Ends {new Date(poll.ends_at).toLocaleDateString()}</Text>
-                            </Pressable>
-                        ))
+                            );
+                        })
                     )}
                 </View>
             </ScrollView>
@@ -251,22 +384,6 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         fontSize: 13,
         color: theme.colors.textMuted,
     },
-    joinButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
-        paddingVertical: 12,
-        borderWidth: 1,
-        borderColor: theme.colors.accent,
-        borderRadius: 24,
-        borderStyle: 'dashed',
-    },
-    joinButtonText: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: theme.colors.accent,
-    },
     emptyState: {
         padding: 20,
         alignItems: 'center',
@@ -285,40 +402,60 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         borderWidth: 1,
         borderColor: theme.colors.border,
         marginBottom: 12,
-    },
-    pollHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        marginBottom: 8,
+        gap: 12,
     },
     pollTitle: {
         fontSize: 18,
         fontWeight: '700',
         color: theme.colors.text,
-        flex: 1,
-        marginRight: 12,
     },
-    pollBadge: {
-        backgroundColor: 'rgba(29, 185, 84, 0.1)',
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 8,
+    songOption: {
+        backgroundColor: theme.colors.surfaceMuted || theme.colors.background,
+        borderRadius: 12,
+        padding: 14,
+        gap: 8,
     },
-    pollBadgeText: {
-        fontSize: 12,
+    songOptionVoted: {
+        borderWidth: 2,
+        borderColor: theme.colors.accent,
+    },
+    songInfo: {
+        gap: 2,
+    },
+    songName: {
+        fontSize: 15,
         fontWeight: '600',
-        color: theme.colors.accent,
+        color: theme.colors.text,
     },
-    pollDescription: {
-        fontSize: 14,
+    artistName: {
+        fontSize: 13,
         color: theme.colors.textMuted,
-        marginBottom: 12,
-        lineHeight: 20,
     },
-    pollEnds: {
+    voteInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        gap: 6,
+    },
+    percentage: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: theme.colors.textMuted,
+    },
+    progressBarContainer: {
+        height: 6,
+        backgroundColor: theme.colors.border,
+        borderRadius: 3,
+        overflow: 'hidden',
+    },
+    progressBar: {
+        height: '100%',
+        backgroundColor: theme.colors.accent,
+        borderRadius: 3,
+    },
+    totalVotes: {
         fontSize: 12,
         color: theme.colors.textMuted,
-        fontStyle: 'italic',
+        textAlign: 'center',
     },
 });

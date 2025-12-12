@@ -2,10 +2,12 @@ import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { useTonalityAuth } from '../../hooks/useTonalityAuth';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabLayout() {
     const { theme } = useTheme();
     const { isAuthenticated, loading } = useTonalityAuth();
+    const insets = useSafeAreaInsets();
 
     if (loading || !isAuthenticated) {
         return null;
@@ -19,8 +21,8 @@ export default function TabLayout() {
                 tabBarStyle: {
                     backgroundColor: theme.colors.tabBar,
                     borderTopColor: theme.colors.tabBorder,
-                    paddingTop: 4,
-                    height: 60,
+                    paddingTop: 0,
+                    paddingBottom: (insets.bottom || 0) + 6,
                 },
                 tabBarLabelStyle: {
                     fontSize: 11,
@@ -30,45 +32,49 @@ export default function TabLayout() {
             }}
         >
             <Tabs.Screen
-                name="community"
+                name="index"
                 options={{
-                    title: 'Community',
-                    tabBarIcon: ({ color }) => <Ionicons name="people" size={22} color={color} />,
+                    title: 'Home',
+                    tabBarIcon: ({ color }) => (
+                        <Ionicons name="home" size={24} color={color} />
+                    ),
                 }}
             />
             <Tabs.Screen
                 name="friends"
                 options={{
                     title: 'Friends',
-                    tabBarIcon: ({ color }) => <Ionicons name="person-add" size={22} color={color} />,
+                    tabBarIcon: ({ color }) => (
+                        <Ionicons name="person-add" size={22} color={color} />
+                    ),
                 }}
             />
             <Tabs.Screen
-                name="index"
+                name="community"
                 options={{
-                    title: 'Home',
-                    tabBarIcon: ({ color }) => <Ionicons name="home" size={24} color={color} />,
+                    title: 'Community',
+                    tabBarIcon: ({ color }) => (
+                        <Ionicons name="people" size={22} color={color} />
+                    ),
                 }}
             />
             <Tabs.Screen
                 name="profile"
                 options={{
                     title: 'Profile',
-                    tabBarIcon: ({ color }) => <Ionicons name="person-circle" size={22} color={color} />,
+                    tabBarIcon: ({ color }) => (
+                        <Ionicons name="person-circle" size={22} color={color} />
+                    ),
                 }}
             />
             {/* Hidden tabs - accessible via navigation but not shown in tab bar */}
             <Tabs.Screen
                 name="song-of-day"
-                options={{
-                    href: null, // Hide from tab bar
-                }}
+                options={{ href: null }}
             />
             <Tabs.Screen
                 name="polls"
-                options={{
-                    href: null, // Hide from tab bar
-                }}
+                options={{ href: null }}
             />
         </Tabs>
     );

@@ -3,7 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSpotifyAuth } from '../../hooks/useSpotifyAuth';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { fetchUserProfile, fetchUserTopTracks } from '../../api/spotify';
+import { fetchCurrentlyPlayingTrack, fetchUserProfile, fetchUserTopTracks } from '../../api/spotify';
 import { Ionicons } from '@expo/vector-icons';
 import { useTonalityAuth } from '../../hooks/useTonalityAuth';
 import { useTheme } from '../../context/ThemeContext';
@@ -30,17 +30,59 @@ export default function HomeScreen() {
     const styles = useMemo(() => createStyles(theme), [theme]);
     const [profile, setProfile] = useState<any>(null);
     const [songOfDay, setSongOfDay] = useState<any>(null);
+    const [currentlyPlaying, setCurrentlyPlaying] = useState<any>(null);
     const routerInstance = useRouter();
 
     useEffect(() => {
-        if (token) {
-            fetchUserProfile(token).then(setProfile).catch(err => {
-                console.error('Error loading profile', err);
-            });
-        } else {
-            setProfile(null);
+    if (!token) {
+        setProfile(null);
+        setCurrentlyPlaying(null);
+        return;
+    }
+
+    let isMounted = true;
+
+    // Fetch profile once on load (doesn't need polling)
+    fetchUserProfile(token)
+        .then(profile => {
+            if (isMounted) setProfile(profile);
+        })
+        .catch(err => {
+            console.error('Error loading profile', err);
+        });
+
+    const fetchTrack = async () => {
+        try {
+            const data = await fetchCurrentlyPlayingTrack(token);
+
+            if (!isMounted) return;
+
+            if (data && data.item) {
+                setCurrentlyPlaying(data.item);
+            } else {
+                setCurrentlyPlaying(null); // Nothing playing / 204
+            }
+        } catch (err) {
+            console.error('Error fetching currently playing track:', err);
+            if (isMounted) setCurrentlyPlaying(null);
         }
-    }, [token]);
+    };
+
+    // Fetch immediately
+    fetchTrack();
+
+    // Poll every 5 seconds
+    const intervalId = setInterval(fetchTrack, 5000);
+
+    // Cleanup on unmount or token change
+    return () => {
+        isMounted = false;
+        clearInterval(intervalId);
+    };
+
+}, [token]);
+
+
 
     const loadSongOfDay = useCallback(async () => {
         if (!token) return;
@@ -93,12 +135,41 @@ export default function HomeScreen() {
                     <Text style={styles.appName}>Tonality</Text>
 
                     {isConnected ? (
-                        <View style={styles.connectedBadge}>
-                            <Ionicons name="musical-note" size={16} color={theme.colors.accent} />
-                            <Text style={styles.connectedText}>
-                                Connected as {profile?.display_name || 'Spotify User'}
-                            </Text>
-                        </View>
+                        <>
+                            <View style={styles.connectedBadge}>
+                                <Ionicons name="musical-note" size={16} color={theme.colors.accent} />
+                                <Text style={styles.connectedText}>
+                                    Connected as {profile?.display_name || 'Spotify User'}
+                                </Text>
+                            </View>
+
+                            {currentlyPlaying && (
+                                <Pressable
+                                    style={styles.nowPlayingBadge}
+                                    onPress={() => {
+                                        // You can route to a dedicated screen later if you want
+                                        // routerInstance.push('/(tabs)/currently-listening');
+                                    }}
+                                >
+                                    {currentlyPlaying.album?.images?.[0]?.url && (
+                                        <Image
+                                            source={{ uri: currentlyPlaying.album.images[0].url }}
+                                            style={styles.nowPlayingImage}
+                                        />
+                                    )}
+                                    <View style={styles.nowPlayingInfo}>
+                                        <Text style={styles.nowPlayingLabel}>Currently listening</Text>
+                                        <Text style={styles.nowPlayingTitle} numberOfLines={1}>
+                                            {currentlyPlaying.name}
+                                        </Text>
+                                        <Text style={styles.nowPlayingArtist} numberOfLines={1}>
+                                            {currentlyPlaying.artists?.map((a: any) => a.name).join(', ')}
+                                        </Text>
+                                    </View>
+                                    <Ionicons name="play-circle" size={24} color={theme.colors.accent} />
+                                </Pressable>
+                            )}
+                        </>
                     ) : (
                         <>
                             <Text style={styles.connectHint}>
@@ -373,7 +444,6 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         fontSize: 12,
         color: theme.colors.textMuted,
     },
-    // Recommended
     recommendedCard: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -419,7 +489,6 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    // Quick links
     quickLinksRow: {
         flexDirection: 'row',
         gap: 12,
@@ -438,5 +507,43 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
         color: theme.colors.text,
+    },nowPlayingBadge: {
+        marginTop: 10,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        backgroundColor: theme.colors.surface,
+        borderRadius: 16,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        alignSelf: 'stretch',
     },
+    nowPlayingImage: {
+        width: 40,
+        height: 40,
+        borderRadius: 8,
+    },
+    nowPlayingInfo: {
+        flex: 1,
+        gap: 2,
+    },
+    nowPlayingLabel: {
+        fontSize: 11,
+        color: theme.colors.textMuted,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        fontWeight: '600',
+    },
+    nowPlayingTitle: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: theme.colors.text,
+    },
+    nowPlayingArtist: {
+        fontSize: 12,
+        color: theme.colors.textMuted,
+    },
+
 });
