@@ -2,12 +2,13 @@ import { View, Text, StyleSheet, Pressable, ScrollView, Image } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSpotifyAuth } from '../../hooks/useSpotifyAuth';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchCurrentlyPlayingTrack, fetchUserProfile, fetchUserTopTracks } from '../../api/spotify';
 import { Ionicons } from '@expo/vector-icons';
 import { useTonalityAuth } from '../../hooks/useTonalityAuth';
 import { useTheme } from '../../context/ThemeContext';
 import type { Theme } from '../../context/ThemeContext';
+import LoadingScreen from '../../components/LoadingScreen';
 
 // Mock data for popular songs by genre
 const mockPopularByGenre = [
@@ -111,7 +112,11 @@ export default function HomeScreen() {
         }
     }, [loading, isAuthenticated, routerInstance]);
 
-    if (loading || !isAuthenticated) {
+    if (loading) {
+        return <LoadingScreen message ="Loading your dashboard" />;
+    }
+
+    if (!isAuthenticated) {
         return null;
     }
 
@@ -507,7 +512,8 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
         color: theme.colors.text,
-    },nowPlayingBadge: {
+    },
+    nowPlayingBadge: {
         marginTop: 10,
         flexDirection: 'row',
         alignItems: 'center',
