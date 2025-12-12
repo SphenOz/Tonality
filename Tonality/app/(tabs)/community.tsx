@@ -114,7 +114,10 @@ export default function CommunityScreen() {
     };
 
     const handleCommunityPress = (communityId: number) => {
-        router.push(`/community/${communityId}`);
+        router.push({
+            pathname: '/community/[id]',
+            params: { id: String(communityId) },
+        });
     };
 
     const handleJoin = async (communityId: number) => {

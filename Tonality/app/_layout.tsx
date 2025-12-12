@@ -5,6 +5,7 @@ import { SpotifyAuthProvider } from '../hooks/useSpotifyAuth';
 import { useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 
+
 function RootLayoutNav() {
   const { isAuthenticated, loading } = useTonalityAuth();
   const { theme } = useTheme();
@@ -17,13 +18,17 @@ function RootLayoutNav() {
 
     const inTabsGroup = segments[0] === '(tabs)';
 
-    if (isAuthenticated && !inTabsGroup) {
-      // Logged in but not in tabs -> go to tabs
-      console.log("RootLayout: Redirecting to tabs");
+    // Allow certain non-tab routes to be visited while authenticated
+    const allowedWhenAuthenticated = new Set(['community', 'user', 'song-of-day', 'polls']);
+    const currentRoot = segments[0] ?? '';
+
+    if (isAuthenticated && !inTabsGroup && !allowedWhenAuthenticated.has(currentRoot)) {
+      // Logged in but trying to view a non-allowed root route -> go to tabs
+      console.log('RootLayout: Redirecting to tabs');
       router.replace('/(tabs)');
     } else if (!isAuthenticated && inTabsGroup) {
       // Not logged in but in tabs -> go to login
-      console.log("RootLayout: Redirecting to login");
+      console.log('RootLayout: Redirecting to login');
       router.replace('/');
     }
   }, [isAuthenticated, loading, segments, router]);
@@ -40,8 +45,7 @@ function RootLayoutNav() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="community/[id]" options={{ headerShown: true }} />
-      <Stack.Screen name="user/[id]" options={{ headerShown: true }} />
+      <Stack.Screen name="user/[id]" />
     </Stack>
   );
 }

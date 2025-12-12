@@ -610,6 +610,26 @@ async def get_communities(session=Depends(get_session)):
     communities = session.exec(select(Community)).all()
     return communities
 
+@app.get("/api/communities/my")
+async def get_my_communities(session=Depends(get_session), user=Depends(get_current_user)):
+    """Get communities the user has joined"""
+    communities = get_user_communities(session, user.id)
+    return [{
+        "id": c.id,
+        "name": c.name,
+        "description": c.description,
+        "member_count": c.member_count,
+        "icon_name": c.icon_name
+    } for c in communities]
+
+@app.post("/api/communities/{community_id}/join")
+async def join_community_endpoint(community_id: int, session=Depends(get_session), user=Depends(get_current_user)):
+    """Join a community"""
+    membership = join_community(session, user.id, community_id)
+    if not membership:
+        raise HTTPException(status_code=400, detail="Failed to join community")
+    return {"message": "Joined community successfully"}
+
 @app.get("/api/communities/{community_id}")
 async def get_community(community_id: int, session=Depends(get_session)):
     """Get community details"""
@@ -617,6 +637,8 @@ async def get_community(community_id: int, session=Depends(get_session)):
     if not community:
         raise HTTPException(status_code=404, detail="Community not found")
     return community
+
+
 
 @app.get("/api/communities/{community_id}/members")
 async def get_community_members(community_id: int, session=Depends(get_session), user=Depends(get_current_user)):

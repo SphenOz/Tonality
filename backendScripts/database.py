@@ -41,7 +41,7 @@ class Friendship(SQLModel, table=True):
 class Community(SQLModel, table=True):
     """Music communities that users can join"""
     id: int | None = Field(default=None, primary_key=True)
-    name: str = Field(index=True)
+    name: str = Field(index=True, unique=True)
     description: str | None = Field(default=None)
     member_count: int = Field(default=0)
     icon_name: str = Field(default="musical-notes")  # Ionicons name

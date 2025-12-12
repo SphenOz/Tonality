@@ -4,6 +4,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useTonalityAuth } from '../../hooks/useTonalityAuth';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+
 export default function TabLayout() {
     const { theme } = useTheme();
     const { isAuthenticated, loading } = useTonalityAuth();
@@ -74,6 +75,10 @@ export default function TabLayout() {
             />
             <Tabs.Screen
                 name="polls"
+                options={{ href: null }}
+            />
+            <Tabs.Screen
+                name="community/[id]"
                 options={{ href: null }}
             />
         </Tabs>
