@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSpotifyAuth } from '../../hooks/useSpotifyAuth';
 import { useTonalityAuth } from '../../context/AuthContext';
@@ -44,6 +44,13 @@ export default function ProfileScreen() {
   };
 
   const isConnected = Boolean(token);
+
+  const openSpotifyProfile = () => {
+    const url = spotifyProfile?.external_urls?.spotify;
+    if (url) {
+      Linking.openURL(url);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -91,6 +98,12 @@ export default function ProfileScreen() {
                 </Text>
                 <Text style={styles.connectionEmail}>{spotifyProfile?.username}</Text>
               </View>
+            )}
+            {isConnected && spotifyProfile?.externalurls?.spotify && (
+              <Pressable style={styles.secondaryButton} onPress={openSpotifyProfile}>
+                <Ionicons name="open-outline" size={16} color={theme.colors.accent} />
+                <Text style={styles.secondaryButtonText}>View in Spotify</Text>
+              </Pressable>
             )}
             {!isLoaded && (
               <Text style={styles.helperText}>Checking your connection…</Text>
@@ -313,6 +326,22 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+  },
+  secondaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.accent,
+    backgroundColor: theme.colors.surface,
+    gap: 8,
+  },
+  secondaryButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.accent,
   },
   logoutText: {
     color: '#fff',
