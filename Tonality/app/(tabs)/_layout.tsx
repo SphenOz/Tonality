@@ -30,10 +30,10 @@ export default function TabLayout() {
             }}
         >
             <Tabs.Screen
-                name="index"
+                name="community"
                 options={{
-                    title: 'Home',
-                    tabBarIcon: ({ color }) => <Ionicons name="home" size={24} color={color} />,
+                    title: 'Community',
+                    tabBarIcon: ({ color }) => <Ionicons name="people" size={22} color={color} />,
                 }}
             />
             <Tabs.Screen
@@ -44,10 +44,10 @@ export default function TabLayout() {
                 }}
             />
             <Tabs.Screen
-                name="community"
+                name="index"
                 options={{
-                    title: 'Community',
-                    tabBarIcon: ({ color }) => <Ionicons name="people" size={22} color={color} />,
+                    title: 'Home',
+                    tabBarIcon: ({ color }) => <Ionicons name="home" size={24} color={color} />,
                 }}
             />
             <Tabs.Screen

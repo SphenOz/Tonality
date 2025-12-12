@@ -75,7 +75,18 @@ function useProvideSpotifyAuth(): SpotifyAuthContextValue {
       clientId: CLIENT_ID,
       usePKCE: true,
       responseType: AuthSession.ResponseType.Code,
-      scopes: ['user-read-email', 'user-library-read', 'user-top-read'],
+      scopes: [
+        'user-read-email',
+        'user-library-read',
+        'user-top-read',
+        'user-read-recently-played',
+        'user-read-currently-playing',
+        'user-read-playback-state',
+        'playlist-read-private',
+        'playlist-read-collaborative',
+        'playlist-modify-public',
+        'playlist-modify-private',
+      ],
       redirectUri: REDIRECT_URI,
     },
     discovery
@@ -114,10 +125,12 @@ function useProvideSpotifyAuth(): SpotifyAuthContextValue {
   // Save verifier/state whenever they change on the request
   useEffect(() => {
     if (request?.codeVerifier) {
+      console.log('[SpotifyAuth] Saving code verifier to storage');
       SecureStore.setItemAsync(CV_KEY, request.codeVerifier);
       verifierRef.current = request.codeVerifier;
     }
     if (request?.state) {
+      console.log('[SpotifyAuth] Saving state to storage');
       SecureStore.setItemAsync(STATE_KEY, request.state);
       stateRef.current = request.state;
     }
@@ -129,6 +142,12 @@ function useProvideSpotifyAuth(): SpotifyAuthContextValue {
         '[SpotifyAuth] Exchanging code for token. redirectUri=',
         REDIRECT_URI
       );
+      
+      console.log('[SpotifyAuth] State check:', {
+        stateRef: stateRef.current,
+        returnedState,
+      });
+      
       const expectedState =
         stateRef.current ?? (await SecureStore.getItemAsync(STATE_KEY));
       if (expectedState && returnedState && returnedState !== expectedState) {
@@ -139,8 +158,18 @@ function useProvideSpotifyAuth(): SpotifyAuthContextValue {
         return;
       }
 
-      const cv =
-        verifierRef.current ?? (await SecureStore.getItemAsync(CV_KEY));
+      console.log('[SpotifyAuth] Verifier check:', {
+        verifierRef: verifierRef.current ? 'exists' : 'null',
+      });
+      
+      // First try ref, then SecureStore
+      let cv = verifierRef.current;
+      if (!cv) {
+        console.log('[SpotifyAuth] Verifier not in ref, checking SecureStore...');
+        cv = await SecureStore.getItemAsync(CV_KEY);
+        console.log('[SpotifyAuth] SecureStore CV:', cv ? 'found' : 'not found');
+      }
+      
       if (!cv) {
         console.error('No code verifier found');
         return;
@@ -268,7 +297,20 @@ function useProvideSpotifyAuth(): SpotifyAuthContextValue {
   }, [storageKey, refreshStorageKey]);
 
   const promptAsync = useCallback(
-    (options?: AuthSession.AuthRequestPromptOptions) => {
+    async (options?: AuthSession.AuthRequestPromptOptions) => {
+      // Ensure the code verifier is saved before prompting
+      // This fixes the issue where verifier is lost on reconnect
+      if (request?.codeVerifier) {
+        console.log('[SpotifyAuth] Pre-prompt: Ensuring code verifier is saved');
+        await SecureStore.setItemAsync(CV_KEY, request.codeVerifier);
+        verifierRef.current = request.codeVerifier;
+      }
+      if (request?.state) {
+        console.log('[SpotifyAuth] Pre-prompt: Ensuring state is saved');
+        await SecureStore.setItemAsync(STATE_KEY, request.state);
+        stateRef.current = request.state;
+      }
+
       const promptOptions = {
         useProxy: USE_PROXY,
         ...(options ?? {}),
@@ -279,7 +321,7 @@ function useProvideSpotifyAuth(): SpotifyAuthContextValue {
       });
       return promptAsyncInternal(promptOptions);
     },
-    [promptAsyncInternal]
+    [promptAsyncInternal, request]
   );
 
   return {

@@ -1,3 +1,10 @@
+import { View } from 'react-native';
+
+// Login is handled in index.tsx
+export default function LoginPlaceholder() {
+    return <View />;
+}
+
 // import { useState } from 'react';
 // import { View, Text, TextInput, StyleSheet, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
 // import { SafeAreaView } from 'react-native-safe-area-context';

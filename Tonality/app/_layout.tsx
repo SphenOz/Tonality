@@ -40,6 +40,8 @@ function RootLayoutNav() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="community/[id]" options={{ headerShown: true }} />
+      <Stack.Screen name="user/[id]" options={{ headerShown: true }} />
     </Stack>
   );
 }

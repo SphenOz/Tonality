@@ -21,3 +21,5 @@ export const API_BASE_URL = getApiBaseUrl();
 
 export const SPOTIFY_CLIENT_ID =
   process.env.EXPO_PUBLIC_SPOTIFY_CLIENT_ID ?? 'YOUR_SPOTIFY_CLIENT_ID';
+
+console.log('[RuntimeConfig] Loaded Client ID:', SPOTIFY_CLIENT_ID);

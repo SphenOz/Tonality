@@ -1,64 +1,100 @@
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useEffect, useMemo, useState } from 'react';
-import { getCurrentPoll, voteForSong, getUserVote, Poll } from '../../api/mockBackend';
+import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import type { Theme } from '../../context/ThemeContext';
+import { useTonalityAuth } from '../../hooks/useTonalityAuth';
+import { getCommunities, getActivePolls, generateWeeklyPolls, Community, Poll } from '../../api/tonality';
 
 export default function CommunityScreen() {
-    const [poll, setPoll] = useState<Poll | null>(null);
+    const [communities, setCommunities] = useState<Community[]>([]);
+    const [activePolls, setActivePolls] = useState<Poll[]>([]);
     const [loading, setLoading] = useState(true);
-    const [userVote, setUserVote] = useState<string | undefined>();
+    const [refreshing, setRefreshing] = useState(false);
+    const [generating, setGenerating] = useState(false);
     const { theme } = useTheme();
     const styles = useMemo(() => createStyles(theme), [theme]);
+    const { token } = useTonalityAuth();
+    const router = useRouter();
 
-    useEffect(() => {
-        loadPoll();
-    }, []);
-
-    const loadPoll = async () => {
+    const loadData = useCallback(async () => {
+        if (!token) return;
         try {
-            setLoading(true);
-            const pollData = await getCurrentPoll();
-            setPoll(pollData);
-            if (pollData) {
-                setUserVote(getUserVote(pollData.id));
-            }
+            const [communitiesData, pollsData] = await Promise.all([
+                getCommunities(token),
+                getActivePolls(token)
+            ]);
+            setCommunities(communitiesData);
+            setActivePolls(pollsData);
         } catch (error) {
-            console.error('Error loading poll:', error);
+            console.error('Error loading community data:', error);
         } finally {
             setLoading(false);
+            setRefreshing(false);
+        }
+    }, [token]);
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
+
+    const onRefresh = useCallback(() => {
+        setRefreshing(true);
+        loadData();
+    }, [loadData]);
+
+    const handleGeneratePolls = async () => {
+        if (!token) return;
+        try {
+            setGenerating(true);
+            await generateWeeklyPolls(token);
+            loadData();
+        } catch (error) {
+            console.error('Error generating polls:', error);
+        } finally {
+            setGenerating(false);
         }
     };
 
-    const handleVote = async (songId: string) => {
-        if (!poll) return;
-        try {
-            await voteForSong(poll.id, songId);
-            setUserVote(songId);
-            loadPoll();
-        } catch (error) {
-            console.error('Error voting:', error);
-        }
+    const handleCommunityPress = (communityId: number) => {
+        router.push(`/community/${communityId}`);
     };
 
     if (loading) {
         return (
             <SafeAreaView style={styles.containerCentered}>
                 <ActivityIndicator size="large" color={theme.colors.accent} />
-                <Text style={styles.loadingText}>Loading community...</Text>
+                <Text style={styles.loadingText}>Loading communities...</Text>
             </SafeAreaView>
         );
     }
 
-    const totalVotes = poll ? poll.songs.reduce((sum, song) => sum + song.votes, 0) : 0;
-
     return (
         <SafeAreaView style={styles.container}>
-            <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+            <ScrollView 
+                style={styles.scrollView} 
+                contentContainerStyle={styles.scrollContent}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.accent} />
+                }
+            >
                 <View style={styles.header}>
-                    <Ionicons name="people" size={32} color={theme.colors.accent} />
+                    <View style={styles.headerTop}>
+                        <Ionicons name="people" size={32} color={theme.colors.accent} />
+                        <Pressable 
+                            style={styles.generateButton} 
+                            onPress={handleGeneratePolls}
+                            disabled={generating}
+                        >
+                            {generating ? (
+                                <ActivityIndicator size="small" color={theme.colors.accent} />
+                            ) : (
+                                <Ionicons name="refresh-circle" size={24} color={theme.colors.accent} />
+                            )}
+                        </Pressable>
+                    </View>
                     <Text style={styles.title}>Community</Text>
                     <Text style={styles.subtitle}>Polls, playlists, and community picks</Text>
                 </View>
@@ -66,96 +102,57 @@ export default function CommunityScreen() {
                 {/* Communities Section */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Your Communities</Text>
-                    <View style={styles.communityCard}>
-                        <View style={styles.communityRow}>
-                            <View style={styles.communityIcon}>
-                                <Ionicons name="musical-notes" size={20} color={theme.colors.accent} />
-                            </View>
-                            <View style={styles.communityInfo}>
-                                <Text style={styles.communityName}>Indie Lovers</Text>
-                                <Text style={styles.communityMembers}>128 members</Text>
-                            </View>
-                            <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
+                    {communities.length === 0 ? (
+                        <View style={styles.emptyState}>
+                            <Text style={styles.emptyStateText}>No communities found</Text>
                         </View>
-                    </View>
-                    <View style={styles.communityCard}>
-                        <View style={styles.communityRow}>
-                            <View style={styles.communityIcon}>
-                                <Ionicons name="headset" size={20} color={theme.colors.accent} />
-                            </View>
-                            <View style={styles.communityInfo}>
-                                <Text style={styles.communityName}>Lo-Fi Chill</Text>
-                                <Text style={styles.communityMembers}>256 members</Text>
-                            </View>
-                            <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
-                        </View>
-                    </View>
+                    ) : (
+                        communities.map((community) => (
+                            <Pressable 
+                                key={community.id} 
+                                style={styles.communityCard}
+                                onPress={() => handleCommunityPress(community.id)}
+                            >
+                                <View style={styles.communityRow}>
+                                    <View style={styles.communityIcon}>
+                                        <Ionicons name={community.icon_name as any || "musical-notes"} size={20} color={theme.colors.accent} />
+                                    </View>
+                                    <View style={styles.communityInfo}>
+                                        <Text style={styles.communityName}>{community.name}</Text>
+                                        <Text style={styles.communityMembers}>{community.member_count} members</Text>
+                                    </View>
+                                    <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
+                                </View>
+                            </Pressable>
+                        ))
+                    )}
                     <Pressable style={styles.joinButton}>
                         <Ionicons name="add" size={18} color={theme.colors.accent} />
                         <Text style={styles.joinButtonText}>Discover Communities</Text>
                     </Pressable>
                 </View>
 
-                {/* Active Poll Section */}
-                {poll && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Active Poll</Text>
-                        <View style={styles.pollCard}>
-                            <View style={styles.pollHeader}>
-                                <Text style={styles.pollTitle}>{poll.title}</Text>
-                                <View style={styles.badgeRow}>
-                                    <View style={styles.badge}>
-                                        <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
-                                        <Text style={styles.badgeText}>3 days left</Text>
+                {/* Active Polls Section */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Active Polls</Text>
+                    {activePolls.length === 0 ? (
+                        <View style={styles.emptyState}>
+                            <Text style={styles.emptyStateText}>No active polls</Text>
+                        </View>
+                    ) : (
+                        activePolls.map((poll) => (
+                            <Pressable key={poll.id} style={styles.pollCard}>
+                                <View style={styles.pollHeader}>
+                                    <Text style={styles.pollTitle}>{poll.title}</Text>
+                                    <View style={styles.pollBadge}>
+                                        <Text style={styles.pollBadgeText}>Active</Text>
                                     </View>
                                 </View>
-                            </View>
-
-                            {poll.songs.map((song) => {
-                                const percentage = totalVotes > 0 ? (song.votes / totalVotes) * 100 : 0;
-                                const isVoted = userVote === song.id;
-
-                                return (
-                                    <Pressable
-                                        key={song.id}
-                                        style={[styles.songOption, isVoted && styles.songOptionVoted]}
-                                        onPress={() => handleVote(song.id)}
-                                    >
-                                        <View style={styles.songInfo}>
-                                            <Text style={styles.songName}>{song.name}</Text>
-                                            <Text style={styles.artistName}>{song.artist}</Text>
-                                        </View>
-                                        <View style={styles.voteInfo}>
-                                            {isVoted && (
-                                                <Ionicons name="checkmark-circle" size={20} color={theme.colors.accent} />
-                                            )}
-                                            <Text style={styles.percentage}>{percentage.toFixed(0)}%</Text>
-                                        </View>
-                                        <View style={styles.progressBarContainer}>
-                                            <View style={[styles.progressBar, { width: `${percentage}%` }]} />
-                                        </View>
-                                    </Pressable>
-                                );
-                            })}
-                            <Text style={styles.totalVotes}>{totalVotes} total votes</Text>
-                        </View>
-                    </View>
-                )}
-
-                {/* Community Playlists */}
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Community Playlists</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.playlistsRow}>
-                        {['Weekend Vibes', 'Study Session', 'Workout Mix'].map((name, idx) => (
-                            <View key={idx} style={styles.playlistCard}>
-                                <View style={styles.playlistCover}>
-                                    <Ionicons name="musical-note" size={28} color={theme.colors.accent} />
-                                </View>
-                                <Text style={styles.playlistName}>{name}</Text>
-                                <Text style={styles.playlistMeta}>24 songs</Text>
-                            </View>
-                        ))}
-                    </ScrollView>
+                                <Text style={styles.pollDescription}>{poll.description}</Text>
+                                <Text style={styles.pollEnds}>Ends {new Date(poll.ends_at).toLocaleDateString()}</Text>
+                            </Pressable>
+                        ))
+                    )}
                 </View>
             </ScrollView>
         </SafeAreaView>
@@ -172,19 +169,35 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         backgroundColor: theme.colors.background,
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 12,
+        gap: 16,
+    },
+    loadingText: {
+        fontSize: 16,
+        color: theme.colors.textMuted,
     },
     scrollView: {
         flex: 1,
     },
     scrollContent: {
         padding: 24,
-        paddingBottom: 64,
-        gap: 28,
+        paddingBottom: 100,
+        gap: 32,
     },
     header: {
         alignItems: 'center',
         gap: 8,
+    },
+    headerTop: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative',
+        width: '100%',
+    },
+    generateButton: {
+        position: 'absolute',
+        right: 0,
+        padding: 8,
     },
     title: {
         fontSize: 28,
@@ -196,14 +209,11 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         color: theme.colors.textMuted,
         textAlign: 'center',
     },
-    loadingText: {
-        color: theme.colors.textMuted,
-    },
     section: {
-        gap: 12,
+        gap: 16,
     },
     sectionTitle: {
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: '700',
         color: theme.colors.text,
     },
@@ -213,17 +223,18 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         padding: 16,
         borderWidth: 1,
         borderColor: theme.colors.border,
+        marginBottom: 12,
     },
     communityRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 12,
+        gap: 16,
     },
     communityIcon: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: theme.colors.accentMuted,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(29, 185, 84, 0.1)',
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -234,6 +245,7 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         fontSize: 16,
         fontWeight: '600',
         color: theme.colors.text,
+        marginBottom: 4,
     },
     communityMembers: {
         fontSize: 13,
@@ -245,124 +257,68 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         justifyContent: 'center',
         gap: 8,
         paddingVertical: 12,
-        borderRadius: 12,
         borderWidth: 1,
         borderColor: theme.colors.accent,
+        borderRadius: 24,
         borderStyle: 'dashed',
     },
     joinButtonText: {
-        color: theme.colors.accent,
+        fontSize: 14,
         fontWeight: '600',
+        color: theme.colors.accent,
+    },
+    emptyState: {
+        padding: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.colors.surface,
+        borderRadius: 12,
+    },
+    emptyStateText: {
+        color: theme.colors.textMuted,
+        fontSize: 14,
     },
     pollCard: {
         backgroundColor: theme.colors.surface,
-        borderRadius: 20,
+        borderRadius: 16,
         padding: 20,
         borderWidth: 1,
         borderColor: theme.colors.border,
-        gap: 12,
+        marginBottom: 12,
     },
     pollHeader: {
-        gap: 8,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        marginBottom: 8,
     },
     pollTitle: {
-        fontSize: 17,
+        fontSize: 18,
         fontWeight: '700',
         color: theme.colors.text,
+        flex: 1,
+        marginRight: 12,
     },
-    badgeRow: {
-        flexDirection: 'row',
-        gap: 8,
-    },
-    badge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        backgroundColor: theme.colors.surfaceMuted,
-        borderRadius: 12,
-        paddingHorizontal: 10,
+    pollBadge: {
+        backgroundColor: 'rgba(29, 185, 84, 0.1)',
+        paddingHorizontal: 8,
         paddingVertical: 4,
+        borderRadius: 8,
     },
-    badgeText: {
-        fontSize: 11,
-        color: theme.colors.textMuted,
-    },
-    songOption: {
-        backgroundColor: theme.colors.surfaceMuted,
-        borderRadius: 12,
-        padding: 14,
-        gap: 8,
-    },
-    songOptionVoted: {
-        borderWidth: 2,
-        borderColor: theme.colors.accent,
-    },
-    songInfo: {
-        gap: 2,
-    },
-    songName: {
-        fontSize: 15,
-        fontWeight: '600',
-        color: theme.colors.text,
-    },
-    artistName: {
-        fontSize: 13,
-        color: theme.colors.textMuted,
-    },
-    voteInfo: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'flex-end',
-        gap: 6,
-    },
-    percentage: {
-        fontSize: 13,
-        fontWeight: '600',
-        color: theme.colors.textMuted,
-    },
-    progressBarContainer: {
-        height: 6,
-        backgroundColor: theme.colors.border,
-        borderRadius: 3,
-        overflow: 'hidden',
-    },
-    progressBar: {
-        height: '100%',
-        backgroundColor: theme.colors.accent,
-        borderRadius: 3,
-    },
-    totalVotes: {
+    pollBadgeText: {
         fontSize: 12,
-        color: theme.colors.textMuted,
-        textAlign: 'center',
+        fontWeight: '600',
+        color: theme.colors.accent,
     },
-    playlistsRow: {
-        marginTop: 8,
-    },
-    playlistCard: {
-        width: 140,
-        marginRight: 16,
-        alignItems: 'center',
-        gap: 8,
-    },
-    playlistCover: {
-        width: 120,
-        height: 120,
-        borderRadius: 16,
-        backgroundColor: theme.colors.surface,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    playlistName: {
+    pollDescription: {
         fontSize: 14,
-        fontWeight: '600',
-        color: theme.colors.text,
-        textAlign: 'center',
+        color: theme.colors.textMuted,
+        marginBottom: 12,
+        lineHeight: 20,
     },
-    playlistMeta: {
+    pollEnds: {
         fontSize: 12,
         color: theme.colors.textMuted,
+        fontStyle: 'italic',
     },
 });

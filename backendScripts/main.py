@@ -10,7 +10,12 @@ except Exception:
     # dotenv is optional at runtime; env vars can be set by the shell/host.
     pass
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, status, BackgroundTasks
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from sqlmodel import Session, select
+from contextlib import asynccontextmanager
+from typing import Annotated
+import httpx
 import jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
@@ -20,10 +25,9 @@ from backendScripts.database import (
     get_user_communities, get_all_communities, join_community,
     get_active_polls, get_poll_with_options, vote_on_poll,
     update_listening_activity, get_friends_listening_activity,
-    Users, Community, Poll, PollOption
+    Users, Community, Poll, PollOption, CommunityMembership, Friendship, ListeningActivity
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/login")
@@ -83,6 +87,21 @@ class VoteRequest(BaseModel):
     option_id: int
 
 
+BCRYPT_MAX_PASSWORD_BYTES = 72
+
+
+def _validate_password_length(password: str) -> None:
+    """bcrypt only uses the first 72 bytes of the password.
+
+    passlib's bcrypt handler raises ValueError for longer secrets.
+    """
+    if len(password.encode("utf-8")) > BCRYPT_MAX_PASSWORD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password too long (bcrypt max is 72 bytes). Use a shorter password.",
+        )
+
+
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()
     if expires_delta:
@@ -123,7 +142,7 @@ async def read_root():
 async def register(form_data: registerData, session=Depends(get_session)):
     print("Registering user:", form_data)
     existing_user = get_user_by_username(session, form_data.username)
-    print("password:", form_data.password)
+    _validate_password_length(form_data.password)
     hashed_password = pwd_context.hash(form_data.password)
     if existing_user:
         raise HTTPException(
@@ -144,13 +163,9 @@ async def register(form_data: registerData, session=Depends(get_session)):
 
 @app.post("/api/login")
 async def login(form_data: registerData, session = Depends(get_session),):
+    _validate_password_length(form_data.password)
     user = get_user_by_username(session, form_data.username)
     if not user or not pwd_context.verify(form_data.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Incorrect username or password",
-        )
-    if not pwd_context.verify(form_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Incorrect username or password",
@@ -228,6 +243,270 @@ async def search_users(q: str, session=Depends(get_session), user=Depends(get_cu
         "spotify_profile_image_url": u.spotify_profile_image_url,
         "is_friend": u.id in friend_ids
     } for u in results[:10]]  # Limit to 10 results
+
+class FriendRequestByUsername(BaseModel):
+    username: str
+
+# ============= Friend Requests System =============
+
+@app.post("/api/friends/request-by-username")
+async def send_friend_request_by_username(data: FriendRequestByUsername, session=Depends(get_session), user=Depends(get_current_user)):
+    """Send a friend request to another user by username"""
+    username = data.username.strip().lstrip('@')  # Remove @ if present
+    if not username:
+        raise HTTPException(status_code=400, detail="Username is required")
+    
+    # Find the target user
+    target = get_user_by_username(session, username)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if target.id == user.id:
+        raise HTTPException(status_code=400, detail="Cannot send friend request to yourself")
+    
+    # Check if target allows friend requests
+    if not target.allow_friend_requests:
+        raise HTTPException(status_code=403, detail="User is not accepting friend requests")
+    
+    # Check if already friends or request pending
+    statement = select(Friendship).where(
+        Friendship.user_id == user.id,
+        Friendship.friend_id == target.id
+    )
+    existing = session.exec(statement).first()
+    if existing:
+        if existing.status == "accepted":
+            raise HTTPException(status_code=400, detail="Already friends with this user")
+        elif existing.status == "pending":
+            raise HTTPException(status_code=400, detail="Friend request already sent")
+    
+    # Check if they already sent us a request
+    statement = select(Friendship).where(
+        Friendship.user_id == target.id,
+        Friendship.friend_id == user.id,
+        Friendship.status == "pending"
+    )
+    incoming = session.exec(statement).first()
+    if incoming:
+        raise HTTPException(status_code=400, detail="This user has already sent you a request. Accept it instead!")
+    
+    # Create pending friendship
+    friendship = Friendship(user_id=user.id, friend_id=target.id, status="pending")
+    session.add(friendship)
+    session.commit()
+    
+    return {"message": "Friend request sent", "request_id": friendship.id, "user": {
+        "id": target.id,
+        "username": target.username,
+        "spotify_display_name": target.spotify_display_name
+    }}
+
+@app.post("/api/friends/request/{user_id}")
+async def send_friend_request(user_id: int, session=Depends(get_session), user=Depends(get_current_user)):
+    """Send a friend request to another user"""
+    if user_id == user.id:
+        raise HTTPException(status_code=400, detail="Cannot send friend request to yourself")
+    
+    # Check if target user exists
+    target = session.get(Users, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Check if target allows friend requests
+    if not target.allow_friend_requests:
+        raise HTTPException(status_code=403, detail="User is not accepting friend requests")
+    
+    # Check if already friends or request pending
+    statement = select(Friendship).where(
+        Friendship.user_id == user.id,
+        Friendship.friend_id == user_id
+    )
+    existing = session.exec(statement).first()
+    if existing:
+        if existing.status == "accepted":
+            raise HTTPException(status_code=400, detail="Already friends with this user")
+        elif existing.status == "pending":
+            raise HTTPException(status_code=400, detail="Friend request already sent")
+    
+    # Check if they already sent us a request
+    statement = select(Friendship).where(
+        Friendship.user_id == user_id,
+        Friendship.friend_id == user.id,
+        Friendship.status == "pending"
+    )
+    incoming = session.exec(statement).first()
+    if incoming:
+        raise HTTPException(status_code=400, detail="This user has already sent you a request. Accept it instead!")
+    
+    # Create pending friendship
+    friendship = Friendship(user_id=user.id, friend_id=user_id, status="pending")
+    session.add(friendship)
+    session.commit()
+    
+    return {"message": "Friend request sent", "request_id": friendship.id}
+
+@app.get("/api/friends/requests")
+async def get_friend_requests(session=Depends(get_session), user=Depends(get_current_user)):
+    """Get pending friend requests (both incoming and outgoing)"""
+    # Incoming requests (others requesting to be our friend)
+    statement = select(Friendship).where(
+        Friendship.friend_id == user.id,
+        Friendship.status == "pending"
+    )
+    incoming = session.exec(statement).all()
+    
+    # Outgoing requests (our pending requests)
+    statement = select(Friendship).where(
+        Friendship.user_id == user.id,
+        Friendship.status == "pending"
+    )
+    outgoing = session.exec(statement).all()
+    
+    # Get user details
+    incoming_details = []
+    for req in incoming:
+        sender = session.get(Users, req.user_id)
+        if sender:
+            incoming_details.append({
+                "request_id": req.id,
+                "user_id": sender.id,
+                "username": sender.username,
+                "spotify_display_name": sender.spotify_display_name,
+                "spotify_profile_image_url": sender.spotify_profile_image_url,
+                "created_at": req.created_at.isoformat()
+            })
+    
+    outgoing_details = []
+    for req in outgoing:
+        recipient = session.get(Users, req.friend_id)
+        if recipient:
+            outgoing_details.append({
+                "request_id": req.id,
+                "user_id": recipient.id,
+                "username": recipient.username,
+                "spotify_display_name": recipient.spotify_display_name,
+                "spotify_profile_image_url": recipient.spotify_profile_image_url,
+                "created_at": req.created_at.isoformat()
+            })
+    
+    return {
+        "incoming": incoming_details,
+        "outgoing": outgoing_details,
+        "incoming_count": len(incoming_details)
+    }
+
+@app.get("/api/friends/requests/incoming")
+async def get_incoming_requests(session=Depends(get_session), user=Depends(get_current_user)):
+    """Get incoming friend requests"""
+    statement = select(Friendship).where(
+        Friendship.friend_id == user.id,
+        Friendship.status == "pending"
+    )
+    requests = session.exec(statement).all()
+    
+    result = []
+    for req in requests:
+        sender = session.get(Users, req.user_id)
+        if sender:
+            result.append({
+                "id": req.id,
+                "from_user": {
+                    "id": sender.id,
+                    "username": sender.username,
+                    "spotify_display_name": sender.spotify_display_name,
+                    "spotify_profile_image_url": sender.spotify_profile_image_url
+                },
+                "created_at": req.created_at.isoformat()
+            })
+    return result
+
+@app.get("/api/friends/requests/outgoing")
+async def get_outgoing_requests(session=Depends(get_session), user=Depends(get_current_user)):
+    """Get outgoing friend requests"""
+    statement = select(Friendship).where(
+        Friendship.user_id == user.id,
+        Friendship.status == "pending"
+    )
+    requests = session.exec(statement).all()
+    
+    result = []
+    for req in requests:
+        recipient = session.get(Users, req.friend_id)
+        if recipient:
+            result.append({
+                "id": req.id,
+                "to_user": {
+                    "id": recipient.id,
+                    "username": recipient.username,
+                    "spotify_display_name": recipient.spotify_display_name,
+                    "spotify_profile_image_url": recipient.spotify_profile_image_url
+                },
+                "created_at": req.created_at.isoformat()
+            })
+    return result
+
+@app.post("/api/friends/requests/{request_id}/accept")
+async def accept_friend_request(request_id: int, session=Depends(get_session), user=Depends(get_current_user)):
+    """Accept a friend request"""
+    # Find the request
+    friendship = session.get(Friendship, request_id)
+    if not friendship:
+        raise HTTPException(status_code=404, detail="Friend request not found")
+    
+    # Check that this request is for us
+    if friendship.friend_id != user.id:
+        raise HTTPException(status_code=403, detail="This request is not for you")
+    
+    if friendship.status != "pending":
+        raise HTTPException(status_code=400, detail="Request is not pending")
+    
+    # Accept the request
+    friendship.status = "accepted"
+    session.add(friendship)
+    
+    # Create reverse friendship
+    reverse = Friendship(user_id=user.id, friend_id=friendship.user_id, status="accepted")
+    session.add(reverse)
+    session.commit()
+    
+    return {"message": "Friend request accepted"}
+
+@app.post("/api/friends/requests/{request_id}/reject")
+async def reject_friend_request(request_id: int, session=Depends(get_session), user=Depends(get_current_user)):
+    """Reject a friend request"""
+    friendship = session.get(Friendship, request_id)
+    if not friendship:
+        raise HTTPException(status_code=404, detail="Friend request not found")
+    
+    if friendship.friend_id != user.id:
+        raise HTTPException(status_code=403, detail="This request is not for you")
+    
+    if friendship.status != "pending":
+        raise HTTPException(status_code=400, detail="Request is not pending")
+    
+    # Delete the request
+    session.delete(friendship)
+    session.commit()
+    
+    return {"message": "Friend request rejected"}
+
+@app.delete("/api/friends/requests/{request_id}")
+async def cancel_friend_request(request_id: int, session=Depends(get_session), user=Depends(get_current_user)):
+    """Cancel an outgoing friend request"""
+    friendship = session.get(Friendship, request_id)
+    if not friendship:
+        raise HTTPException(status_code=404, detail="Friend request not found")
+    
+    if friendship.user_id != user.id:
+        raise HTTPException(status_code=403, detail="This is not your request")
+    
+    if friendship.status != "pending":
+        raise HTTPException(status_code=400, detail="Request is not pending")
+    
+    session.delete(friendship)
+    session.commit()
+    
+    return {"message": "Friend request cancelled"}
 
 @app.post("/api/friends/add-by-username")
 async def add_friend_by_username(data: dict, session=Depends(get_session), user=Depends(get_current_user)):
@@ -325,35 +604,179 @@ async def update_listening(activity: ListeningActivityUpdate, session=Depends(ge
 
 @app.get("/api/communities")
 async def get_communities(session=Depends(get_session)):
-    """Get all available communities"""
-    communities = get_all_communities(session)
-    return [{
-        "id": c.id,
-        "name": c.name,
-        "description": c.description,
-        "member_count": c.member_count,
-        "icon_name": c.icon_name
-    } for c in communities]
+    """Get all communities"""
+    communities = session.exec(select(Community)).all()
+    return communities
 
-@app.get("/api/communities/my")
-async def get_my_communities(session=Depends(get_session), user=Depends(get_current_user)):
-    """Get communities the user has joined"""
-    communities = get_user_communities(session, user.id)
-    return [{
-        "id": c.id,
-        "name": c.name,
-        "description": c.description,
-        "member_count": c.member_count,
-        "icon_name": c.icon_name
-    } for c in communities]
+@app.get("/api/communities/{community_id}")
+async def get_community(community_id: int, session=Depends(get_session)):
+    """Get community details"""
+    community = session.get(Community, community_id)
+    if not community:
+        raise HTTPException(status_code=404, detail="Community not found")
+    return community
 
-@app.post("/api/communities/{community_id}/join")
-async def join_community_endpoint(community_id: int, session=Depends(get_session), user=Depends(get_current_user)):
-    """Join a community"""
-    membership = join_community(session, user.id, community_id)
-    if not membership:
-        raise HTTPException(status_code=400, detail="Failed to join community")
-    return {"message": "Joined community successfully"}
+@app.get("/api/communities/{community_id}/members")
+async def get_community_members(community_id: int, session=Depends(get_session), user=Depends(get_current_user)):
+    """Get members of a community"""
+    community = session.get(Community, community_id)
+    if not community:
+        raise HTTPException(status_code=404, detail="Community not found")
+    
+    # Get all memberships
+    statement = select(CommunityMembership).where(CommunityMembership.community_id == community_id)
+    memberships = session.exec(statement).all()
+    
+    # Get user details
+    members = []
+    for m in memberships:
+        member = session.get(Users, m.user_id)
+        if member:
+            # Check if this user is friend with current user
+            is_friend = False
+            if member.id != user.id:
+                friend_check = session.exec(
+                    select(Friendship).where(
+                        Friendship.user_id == user.id,
+                        Friendship.friend_id == member.id,
+                        Friendship.status == "accepted"
+                    )
+                ).first()
+                is_friend = friend_check is not None
+            
+            members.append({
+                "id": member.id,
+                "username": member.username,
+                "spotify_display_name": member.spotify_display_name,
+                "spotify_profile_image_url": member.spotify_profile_image_url,
+                "is_online": member.is_online,
+                "is_friend": is_friend,
+                "is_self": member.id == user.id,
+                "joined_at": m.joined_at.isoformat()
+            })
+    
+    return {"members": members, "count": len(members)}
+
+@app.get("/api/communities/{community_id}/top-songs")
+async def get_community_top_songs(community_id: int, session=Depends(get_session)):
+    """Get top songs in a community based on member listening activity"""
+    # Get all memberships
+    statement = select(CommunityMembership).where(CommunityMembership.community_id == community_id)
+    memberships = session.exec(statement).all()
+    member_ids = [m.user_id for m in memberships]
+    
+    if not member_ids:
+        return {"songs": []}
+    
+    # Get listening activities of members
+    statement = select(ListeningActivity).where(ListeningActivity.user_id.in_(member_ids))
+    activities = session.exec(statement).all()
+    
+    # Aggregate songs by play count
+    song_counts = {}
+    for activity in activities:
+        key = f"{activity.track_name}|{activity.artist_name}"
+        if key not in song_counts:
+            song_counts[key] = {
+                "track_name": activity.track_name,
+                "artist_name": activity.artist_name,
+                "album_name": activity.album_name,
+                "album_image_url": activity.album_image_url,
+                "spotify_uri": activity.spotify_uri,
+                "count": 0
+            }
+        song_counts[key]["count"] += 1
+    
+    # Sort by count and return top 5
+    sorted_songs = sorted(song_counts.values(), key=lambda x: x["count"], reverse=True)
+    return {"songs": sorted_songs[:5]}
+
+# ============= User Profiles =============
+
+@app.get("/api/users/{user_id}/profile")
+async def get_user_profile(user_id: int, session=Depends(get_session), current_user=Depends(get_current_user)):
+    """Get a user's public profile"""
+    user = session.get(Users, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Check friendship status
+    is_friend = False
+    pending_request = None
+    if user_id != current_user.id:
+        # Check if friends
+        friend_check = session.exec(
+            select(Friendship).where(
+                Friendship.user_id == current_user.id,
+                Friendship.friend_id == user_id,
+                Friendship.status == "accepted"
+            )
+        ).first()
+        is_friend = friend_check is not None
+        
+        # Check for pending request
+        pending_check = session.exec(
+            select(Friendship).where(
+                Friendship.user_id == current_user.id,
+                Friendship.friend_id == user_id,
+                Friendship.status == "pending"
+            )
+        ).first()
+        if pending_check:
+            pending_request = "outgoing"
+        else:
+            incoming_check = session.exec(
+                select(Friendship).where(
+                    Friendship.user_id == user_id,
+                    Friendship.friend_id == current_user.id,
+                    Friendship.status == "pending"
+                )
+            ).first()
+            if incoming_check:
+                pending_request = "incoming"
+    
+    # Get listening activity if allowed
+    listening_activity = None
+    if user.show_listening_activity:
+        activity = session.exec(
+            select(ListeningActivity).where(ListeningActivity.user_id == user_id)
+        ).first()
+        if activity:
+            listening_activity = {
+                "track_name": activity.track_name,
+                "artist_name": activity.artist_name,
+                "album_name": activity.album_name,
+                "album_image_url": activity.album_image_url,
+                "spotify_uri": activity.spotify_uri
+            }
+    
+    # Get communities this user is in
+    statement = select(CommunityMembership).where(CommunityMembership.user_id == user_id)
+    memberships = session.exec(statement).all()
+    community_ids = [m.community_id for m in memberships]
+    communities = []
+    for cid in community_ids:
+        community = session.get(Community, cid)
+        if community:
+            communities.append({
+                "id": community.id,
+                "name": community.name,
+                "icon_name": community.icon_name
+            })
+    
+    return {
+        "id": user.id,
+        "username": user.username,
+        "spotify_display_name": user.spotify_display_name,
+        "spotify_profile_image_url": user.spotify_profile_image_url,
+        "is_online": user.is_online,
+        "is_friend": is_friend,
+        "is_self": user_id == current_user.id,
+        "pending_request": pending_request,
+        "allow_friend_requests": user.allow_friend_requests,
+        "listening_activity": listening_activity,
+        "communities": communities
+    }
 
 # ============= Polls =============
 
@@ -399,6 +822,100 @@ async def vote_on_poll_endpoint(poll_id: int, vote_data: VoteRequest, session=De
     if not vote:
         raise HTTPException(status_code=400, detail="Failed to vote")
     return {"message": "Vote recorded successfully"}
+
+# ============= Admin / System =============
+
+@app.post("/api/polls/generate")
+async def generate_weekly_polls(
+    session: Session = Depends(get_session),
+    token: str = Depends(oauth2_scheme)
+):
+    """Generate weekly polls based on Spotify data (using user's token)"""
+    genres = ["pop", "rock", "hip-hop", "indie", "r-n-b"]
+    
+    async with httpx.AsyncClient() as client:
+        for genre in genres:
+            # 1. Search for tracks in this genre
+            try:
+                response = await client.get(
+                    "https://api.spotify.com/v1/search",
+                    params={
+                        "q": f"genre:{genre}",
+                        "type": "track",
+                        "limit": 5,
+                        "market": "US"
+                    },
+                    headers={"Authorization": f"Bearer {token}"}
+                )
+                
+                if response.status_code != 200:
+                    print(f"Failed to fetch for {genre}: {response.status_code}")
+                    continue
+                    
+                data = response.json()
+                tracks = data.get("tracks", {}).get("items", [])
+                
+                if not tracks:
+                    continue
+                    
+                # 2. Find or create a community for this genre
+                statement = select(Community).where(Community.name.ilike(f"%{genre}%"))
+                community = session.exec(statement).first()
+                
+                if not community:
+                    # Create a new community for this genre
+                    community = Community(
+                        name=f"{genre.capitalize()} Fans",
+                        description=f"The place for {genre} lovers.",
+                        icon_name="musical-notes"
+                    )
+                    session.add(community)
+                    session.commit()
+                    session.refresh(community)
+                
+                # 3. Deactivate old polls for this community
+                statement = select(Poll).where(
+                    Poll.community_id == community.id,
+                    Poll.is_active == True
+                )
+                old_polls = session.exec(statement).all()
+                for p in old_polls:
+                    p.is_active = False
+                    session.add(p)
+                
+                # 4. Create new poll
+                new_poll = Poll(
+                    community_id=community.id,
+                    title=f"Weekly {genre.capitalize()} Top Picks",
+                    description=f"Vote for your favorite {genre} track of the week!",
+                    ends_at=datetime.utcnow() + timedelta(days=7),
+                    is_active=True
+                )
+                session.add(new_poll)
+                session.commit()
+                session.refresh(new_poll)
+                
+                # 5. Add options
+                for track in tracks:
+                    option = PollOption(
+                        poll_id=new_poll.id,
+                        song_name=track["name"],
+                        artist_name=track["artists"][0]["name"],
+                        spotify_uri=track["uri"]
+                    )
+                    session.add(option)
+                
+                session.commit()
+                
+            except Exception as e:
+                print(f"Error generating poll for {genre}: {e}")
+                continue
+            
+    return {"message": "Polls generated successfully"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 
 
 
