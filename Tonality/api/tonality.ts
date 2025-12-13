@@ -24,6 +24,10 @@ export interface CommunityMember {
     username: string;
     spotify_display_name?: string;
     spotify_profile_image_url?: string;
+    is_online?: boolean;
+    is_friend?: boolean;
+    is_self?: boolean;
+    joined_at?: string;
 }
 
 export interface Poll {

@@ -77,6 +77,10 @@ export default function TabLayout() {
                 name="polls"
                 options={{ href: null }}
             />
+            <Tabs.Screen
+                name="community/[id]"
+                options={{ href: null }}
+            />
         </Tabs>
     );
 }

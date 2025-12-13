@@ -42,7 +42,6 @@ function RootLayoutNav() {
     <Stack screenOptions={{ headerShown: false, animation: 'fade_from_bottom' }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="community/[id]" options={{ headerShown: true, animation: 'slide_from_right' }} />
       <Stack.Screen name="user/[id]" options={{ headerShown: true, animation: 'slide_from_right' }} />
     </Stack>
   );
