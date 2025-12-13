@@ -555,11 +555,10 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-<<<<<<< HEAD
   logoutButtonPressed: {
     opacity: 0.8,
     transform: [{ scale: 0.98 }],
-=======
+  },
   secondaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -575,7 +574,6 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: theme.colors.accent,
->>>>>>> origin/main
   },
   logoutText: {
     color: '#fff',
