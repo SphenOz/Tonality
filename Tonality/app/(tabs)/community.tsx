@@ -8,6 +8,7 @@ import type { Theme } from '../../context/ThemeContext';
 import { API_BASE_URL } from '../../utils/runtimeConfig';
 import { useTonalityAuth } from '../../context/AuthContext';
 import { getCommunities, getActivePolls, generateWeeklyPolls } from '../../api/tonality';
+import LoadingScreen from '../../components/LoadingScreen';
 
 /* ────────────────────────────────────────────── */
 /*                API HELPERS                     */
@@ -170,12 +171,7 @@ export default function CommunityScreen() {
     };
 
     if (loading) {
-        return (
-            <SafeAreaView style={styles.containerCentered}>
-                <ActivityIndicator size="large" color={theme.colors.accent} />
-                <Text style={styles.loadingText}>Loading communities...</Text>
-            </SafeAreaView>
-        );
+        return <LoadingScreen message="Loading communities..." />;
     }
 
     return (

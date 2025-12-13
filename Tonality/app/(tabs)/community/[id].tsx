@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, Image, Alert, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, Alert, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import LoadingScreen from '../../../components/LoadingScreen';
 import { useTheme } from '../../../context/ThemeContext';
 import type { Theme } from '../../../context/ThemeContext';
 import { useTonalityAuth } from '../../../context/AuthContext';
@@ -128,12 +129,7 @@ export default function CommunityDetailScreen() {
     };
 
     if (loading) {
-        return (
-            <SafeAreaView style={styles.containerCentered}>
-                <ActivityIndicator size="large" color={theme.colors.accent} />
-                <Text style={styles.loadingText}>Loading community...</Text>
-            </SafeAreaView>
-        );
+        return <LoadingScreen message="Loading community..." />;
     }
 
     if (!community) {

@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Image, Pressable, Linking, ActivityIndicator, Animated } from 'react-native';
+import { View, Text, StyleSheet, Image, Pressable, Linking, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSpotifyAuth } from '../../hooks/useSpotifyAuth';
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
@@ -6,6 +6,7 @@ import { fetchUserTopTracks } from '../../api/spotify';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import type { Theme } from '../../context/ThemeContext';
+import LoadingScreen from '../../components/LoadingScreen';
 
 export default function SongOfDayScreen() {
     const { token, promptAsync, refreshToken } = useSpotifyAuth();
@@ -95,12 +96,7 @@ export default function SongOfDayScreen() {
     }
 
     if (loading) {
-        return (
-            <SafeAreaView style={styles.containerCentered}>
-                <ActivityIndicator size="large" color={theme.colors.accent} />
-                <Text style={styles.loadingText}>Finding your song of the day...</Text>
-            </SafeAreaView>
-        );
+        return <LoadingScreen message="Finding your song of the day..." />;
     }
 
     if (!songOfDay) {

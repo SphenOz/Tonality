@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Modal, TextInput, Alert, Animated, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import LoadingScreen from '../../components/LoadingScreen';
 import { Ionicons } from '@expo/vector-icons';
 import Reanimated, { 
     FadeIn, 
@@ -465,14 +466,7 @@ export default function FriendsScreen() {
     };
 
     if (loading) {
-        return (
-            <SafeAreaView style={styles.container}>
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={theme.colors.accent} />
-                    <Text style={styles.loadingText}>Loading friends...</Text>
-                </View>
-            </SafeAreaView>
-        );
+        return <LoadingScreen message="Loading friends..." />;
     }
 
     return (
