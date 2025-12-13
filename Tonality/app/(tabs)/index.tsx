@@ -38,8 +38,12 @@ export default function HomeScreen() {
     const [currentlyPlaying, setCurrentlyPlaying] = useState<any>(null);
     const [recommendations, setRecommendations] = useState<SpotifyTrack[]>([]);
     const [genreTracks, setGenreTracks] = useState<GenreWithTracks[]>([]);
+    const [trendingSongs, setTrendingSongs] = useState<GenreWithTracks[]>([]);
+    const [discoverSongs, setDiscoverSongs] = useState<SpotifyTrack[]>([]);
     const [loadingRecs, setLoadingRecs] = useState(false);
     const [loadingGenres, setLoadingGenres] = useState(false);
+    const [loadingTrending, setLoadingTrending] = useState(false);
+    const [loadingDiscover, setLoadingDiscover] = useState(false);
     const routerInstance = useRouter();
     
     // Keep a ref to the latest token for use in async callbacks
@@ -67,7 +71,7 @@ export default function HomeScreen() {
         ]).start();
     }, [fadeAnim, slideAnim]);
 
-    // Clear all Spotify-related data when disconnected
+    // Clear Spotify-specific data when disconnected, but keep trending
     useEffect(() => {
         if (!token) {
             setProfile(null);
@@ -216,10 +220,45 @@ export default function HomeScreen() {
         }
     }, [authToken]);
 
+    // Load trending songs (no auth required) - for users without Spotify connected
+    const loadTrendingSongs = useCallback(async () => {
+        setLoadingTrending(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/trending-songs`);
+            if (response.ok) {
+                const data = await response.json();
+                setTrendingSongs(data.genres || []);
+            }
+        } catch (error) {
+            console.error('Error loading trending songs:', error);
+        } finally {
+            setLoadingTrending(false);
+        }
+    }, []);
+
+    // Load discover songs (no auth required) - for users without Spotify connected
+    const loadDiscoverSongs = useCallback(async () => {
+        setLoadingDiscover(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/discover-songs`);
+            if (response.ok) {
+                const data = await response.json();
+                setDiscoverSongs(data.tracks || []);
+            }
+        } catch (error) {
+            console.error('Error loading discover songs:', error);
+        } finally {
+            setLoadingDiscover(false);
+        }
+    }, []);
+
     useEffect(() => {
         // Song of the Day is global - load it regardless of Spotify connection
         loadSongOfDay();
-    }, [loadSongOfDay]);
+        // Also load trending songs for users without Spotify
+        loadTrendingSongs();
+        loadDiscoverSongs();
+    }, [loadSongOfDay, loadTrendingSongs, loadDiscoverSongs]);
 
     useEffect(() => {
         if (authToken && token) {
@@ -364,98 +403,112 @@ export default function HomeScreen() {
                     )}
                 </View>
 
-                {/* Popular Songs by Genre */}
-                {isConnected && (
-                    <View style={styles.section}>
-                        <View style={styles.sectionHeader}>
-                            <Ionicons name="flame" size={18} color={theme.colors.accent} />
-                            <Text style={styles.sectionTitle}>Popular in Your Genres</Text>
-                        </View>
-                        {loadingGenres ? (
-                            <View style={styles.loadingContainer}>
-                                <ActivityIndicator size="small" color={theme.colors.accent} />
-                                <Text style={styles.loadingText}>Loading your genres...</Text>
-                            </View>
-                        ) : genreTracks.length === 0 ? (
-                            <View style={styles.emptyState}>
-                                <Text style={styles.emptyStateText}>Listen to more music to see genre recommendations</Text>
-                            </View>
-                        ) : (
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                                {genreTracks.map((genre, idx) => (
-                                    <View key={idx} style={styles.genreCard}>
-                                        <Text style={styles.genreName}>{genre.genre}</Text>
-                                        {genre.tracks.map((track, sIdx) => (
-                                            <Pressable 
-                                                key={sIdx} 
-                                                style={styles.genreSongRow}
-                                                onPress={() => openInSpotify({ id: track.id, type: 'track', name: track.name })}
-                                            >
-                                                {track.album_image_url && (
-                                                    <Image source={{ uri: track.album_image_url }} style={styles.genreSongImage} />
-                                                )}
-                                                <View style={styles.genreSongInfo}>
-                                                    <Text style={styles.genreSongName} numberOfLines={1}>{track.name}</Text>
-                                                    <Text style={styles.genreSongArtist} numberOfLines={1}>{track.artist}</Text>
-                                                </View>
-                                            </Pressable>
-                                        ))}
-                                    </View>
-                                ))}
-                            </ScrollView>
-                        )}
+                {/* Popular Songs by Genre - Show personalized if connected, trending if not */}
+                <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                        <Ionicons name="flame" size={18} color={theme.colors.accent} />
+                        <Text style={styles.sectionTitle}>
+                            {isConnected ? 'Popular in Your Genres' : 'Trending Now'}
+                        </Text>
                     </View>
-                )}
+                    {(isConnected ? loadingGenres : loadingTrending) ? (
+                        <View style={styles.loadingContainer}>
+                            <ActivityIndicator size="small" color={theme.colors.accent} />
+                            <Text style={styles.loadingText}>
+                                {isConnected ? 'Loading your genres...' : 'Loading trending songs...'}
+                            </Text>
+                        </View>
+                    ) : (isConnected ? genreTracks : trendingSongs).length === 0 ? (
+                        <View style={styles.emptyState}>
+                            <Text style={styles.emptyStateText}>
+                                {isConnected 
+                                    ? 'Listen to more music to see genre recommendations' 
+                                    : 'Unable to load trending songs'}
+                            </Text>
+                        </View>
+                    ) : (
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                            {(isConnected ? genreTracks : trendingSongs).map((genre, idx) => (
+                                <View key={idx} style={styles.genreCard}>
+                                    <Text style={styles.genreName}>{genre.genre}</Text>
+                                    {genre.tracks.map((track, sIdx) => (
+                                        <Pressable 
+                                            key={sIdx} 
+                                            style={styles.genreSongRow}
+                                            onPress={() => openInSpotify({ id: track.id, type: 'track', name: track.name })}
+                                        >
+                                            {track.album_image_url && (
+                                                <Image source={{ uri: track.album_image_url }} style={styles.genreSongImage} />
+                                            )}
+                                            <View style={styles.genreSongInfo}>
+                                                <Text style={styles.genreSongName} numberOfLines={1}>{track.name}</Text>
+                                                <Text style={styles.genreSongArtist} numberOfLines={1}>{track.artist}</Text>
+                                            </View>
+                                        </Pressable>
+                                    ))}
+                                </View>
+                            ))}
+                        </ScrollView>
+                    )}
+                </View>
 
-                {/* Recommended for You */}
-                {isConnected && (
-                    <View style={styles.section}>
-                        <View style={styles.sectionHeader}>
-                            <Ionicons name="heart" size={18} color={theme.colors.accent} />
-                            <Text style={styles.sectionTitle}>Recommended for You</Text>
-                        </View>
-                        {loadingRecs ? (
-                            <View style={styles.loadingContainer}>
-                                <ActivityIndicator size="small" color={theme.colors.accent} />
-                                <Text style={styles.loadingText}>Getting recommendations...</Text>
-                            </View>
-                        ) : recommendations.length === 0 ? (
-                            <View style={styles.emptyState}>
-                                <Text style={styles.emptyStateText}>Listen to more music to get personalized recommendations</Text>
-                            </View>
-                        ) : (
-                            recommendations.slice(0, 5).map((track, idx) => (
-                                <Pressable 
-                                    key={idx} 
-                                    style={({ pressed }) => [
-                                        styles.recommendedCard,
-                                        pressed && styles.recommendedCardPressed,
-                                    ]}
-                                    onPress={() => openInSpotify({ id: track.id, type: 'track', name: track.name })}
-                                >
-                                    {track.album_image_url ? (
-                                        <Image source={{ uri: track.album_image_url }} style={styles.recommendedImage} />
-                                    ) : (
-                                        <View style={styles.recommendedIcon}>
-                                            <Ionicons name="musical-note" size={20} color={theme.colors.accent} />
-                                        </View>
-                                    )}
-                                    <View style={styles.recommendedInfo}>
-                                        <Text style={styles.recommendedName} numberOfLines={1}>{track.name}</Text>
-                                        <Text style={styles.recommendedArtist} numberOfLines={1}>{track.artist}</Text>
-                                        <Text style={styles.recommendedReason}>Based on your listening</Text>
-                                    </View>
-                                    <Pressable 
-                                        style={styles.playIconButton}
-                                        onPress={() => openInSpotify({ id: track.id, type: 'track' })}
-                                    >
-                                        <Ionicons name="play-circle" size={28} color={theme.colors.accent} />
-                                    </Pressable>
-                                </Pressable>
-                            ))
-                        )}
+                {/* Recommended for You (connected) / Discover Songs (not connected) */}
+                <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                        <Ionicons name={isConnected ? "heart" : "compass"} size={18} color={theme.colors.accent} />
+                        <Text style={styles.sectionTitle}>
+                            {isConnected ? 'Recommended for You' : 'Discover New Music'}
+                        </Text>
                     </View>
-                )}
+                    {(isConnected ? loadingRecs : loadingDiscover) ? (
+                        <View style={styles.loadingContainer}>
+                            <ActivityIndicator size="small" color={theme.colors.accent} />
+                            <Text style={styles.loadingText}>
+                                {isConnected ? 'Getting recommendations...' : 'Finding new music for you...'}
+                            </Text>
+                        </View>
+                    ) : (isConnected ? recommendations : discoverSongs).length === 0 ? (
+                        <View style={styles.emptyState}>
+                            <Text style={styles.emptyStateText}>
+                                {isConnected 
+                                    ? 'Listen to more music to get personalized recommendations' 
+                                    : 'Connect Spotify for personalized recommendations'}
+                            </Text>
+                        </View>
+                    ) : (
+                        (isConnected ? recommendations : discoverSongs).slice(0, 5).map((track, idx) => (
+                            <Pressable 
+                                key={idx} 
+                                style={({ pressed }) => [
+                                    styles.recommendedCard,
+                                    pressed && styles.recommendedCardPressed,
+                                ]}
+                                onPress={() => openInSpotify({ id: track.id, type: 'track', name: track.name })}
+                            >
+                                {track.album_image_url ? (
+                                    <Image source={{ uri: track.album_image_url }} style={styles.recommendedImage} />
+                                ) : (
+                                    <View style={styles.recommendedIcon}>
+                                        <Ionicons name="musical-note" size={20} color={theme.colors.accent} />
+                                    </View>
+                                )}
+                                <View style={styles.recommendedInfo}>
+                                    <Text style={styles.recommendedName} numberOfLines={1}>{track.name}</Text>
+                                    <Text style={styles.recommendedArtist} numberOfLines={1}>{track.artist}</Text>
+                                    <Text style={styles.recommendedReason}>
+                                        {isConnected ? 'Based on your listening' : 'Popular right now'}
+                                    </Text>
+                                </View>
+                                <Pressable 
+                                    style={styles.playIconButton}
+                                    onPress={() => openInSpotify({ id: track.id, type: 'track' })}
+                                >
+                                    <Ionicons name="play-circle" size={28} color={theme.colors.accent} />
+                                </Pressable>
+                            </Pressable>
+                        ))
+                    )}
+                </View>
 
                 {/* Quick Links */}
                 <View style={styles.section}>

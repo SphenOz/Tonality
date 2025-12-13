@@ -1020,6 +1020,122 @@ async def get_song_of_day():
         
         return {"track": song_data, "cached": False}
 
+# Cache for trending songs
+_trending_songs_cache: dict = {"date": None, "genres": []}
+
+@app.get("/api/trending-songs")
+async def get_trending_songs():
+    """
+    Get trending/popular songs by genre - no user authentication required.
+    Uses Spotify's Client Credentials flow to fetch popular tracks.
+    Cached for 1 hour to reduce API calls.
+    """
+    global _trending_songs_cache
+    
+    import time
+    current_hour = int(time.time() // 3600)  # Cache key based on current hour
+    
+    # Return cached data if still valid
+    if _trending_songs_cache.get("date") == current_hour and _trending_songs_cache.get("genres"):
+        return {"genres": _trending_songs_cache["genres"], "cached": True}
+    
+    access_token = await get_spotify_client_credentials_token()
+    if not access_token:
+        return {"genres": [], "error": "Spotify credentials not configured"}
+    
+    # Popular genres to fetch
+    genres_to_search = [
+        ("Pop", "genre:pop year:2024"),
+        ("Hip Hop", "genre:hip-hop year:2024"),
+        ("R&B", "genre:r&b year:2024"),
+        ("Rock", "genre:rock year:2024"),
+        ("Electronic", "genre:electronic year:2024"),
+    ]
+    
+    result_genres = []
+    
+    async with httpx.AsyncClient() as client:
+        for genre_name, query in genres_to_search:
+            try:
+                response = await client.get(
+                    "https://api.spotify.com/v1/search",
+                    params={"q": query, "type": "track", "limit": 5, "market": "US"},
+                    headers={"Authorization": f"Bearer {access_token}"}
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    tracks = []
+                    for track in data.get("tracks", {}).get("items", []):
+                        tracks.append({
+                            "id": track["id"],
+                            "name": track["name"],
+                            "artist": track["artists"][0]["name"] if track["artists"] else "Unknown",
+                            "album_image_url": track["album"]["images"][0]["url"] if track.get("album", {}).get("images") else None,
+                            "spotify_uri": track["uri"]
+                        })
+                    
+                    if tracks:
+                        result_genres.append({
+                            "genre": genre_name,
+                            "tracks": tracks
+                        })
+            except Exception as e:
+                print(f"Error fetching {genre_name} tracks: {e}")
+                continue
+    
+    # Cache the results
+    _trending_songs_cache["date"] = current_hour
+    _trending_songs_cache["genres"] = result_genres
+    
+    return {"genres": result_genres, "cached": False}
+
+@app.get("/api/discover-songs")
+async def get_discover_songs():
+    """
+    Get a curated list of songs for discovery - no user authentication required.
+    Returns a mix of popular and trending tracks across genres.
+    """
+    access_token = await get_spotify_client_credentials_token()
+    if not access_token:
+        return {"tracks": [], "error": "Spotify credentials not configured"}
+    
+    # Search for popular/trending tracks
+    async with httpx.AsyncClient() as client:
+        try:
+            # Get a mix of popular tracks from different genres
+            response = await client.get(
+                "https://api.spotify.com/v1/search",
+                params={
+                    "q": "year:2024",
+                    "type": "track",
+                    "limit": 10,
+                    "market": "US"
+                },
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            
+            if response.status_code != 200:
+                return {"tracks": [], "error": f"Spotify API error: {response.status_code}"}
+            
+            data = response.json()
+            tracks = []
+            for track in data.get("tracks", {}).get("items", []):
+                tracks.append({
+                    "id": track["id"],
+                    "name": track["name"],
+                    "artist": track["artists"][0]["name"] if track["artists"] else "Unknown",
+                    "album": track["album"]["name"] if track.get("album") else None,
+                    "album_image_url": track["album"]["images"][0]["url"] if track.get("album", {}).get("images") else None,
+                    "spotify_uri": track["uri"],
+                    "preview_url": track.get("preview_url")
+                })
+            
+            return {"tracks": tracks}
+        except Exception as e:
+            print(f"Error fetching discover songs: {e}")
+            return {"tracks": [], "error": str(e)}
+
 # Global cache for access tokens: user_id -> (access_token, expiry_timestamp)
 _access_token_cache = {}
 
@@ -1188,9 +1304,57 @@ async def get_spotify_recommendations(session=Depends(get_session), user=Depends
             top_data = top_response.json()
             seed_tracks = [t["id"] for t in top_data.get("items", [])[:5]]
         
+        # If no short-term tracks, try medium-term
         if not seed_tracks:
-            # Fallback to popular genres if no top tracks
-            return {"tracks": [], "error": "No listening history for recommendations"}
+            medium_response = await client.get(
+                "https://api.spotify.com/v1/me/top/tracks",
+                params={"limit": 5, "time_range": "medium_term"},
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            if medium_response.status_code == 200:
+                medium_data = medium_response.json()
+                seed_tracks = [t["id"] for t in medium_data.get("items", [])[:5]]
+        
+        # If still no tracks, try long-term
+        if not seed_tracks:
+            long_response = await client.get(
+                "https://api.spotify.com/v1/me/top/tracks",
+                params={"limit": 5, "time_range": "long_term"},
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            if long_response.status_code == 200:
+                long_data = long_response.json()
+                seed_tracks = [t["id"] for t in long_data.get("items", [])[:5]]
+        
+        if not seed_tracks:
+            # Fallback: use seed genres instead of tracks
+            # Try to get recommendations based on popular genres
+            rec_response = await client.get(
+                "https://api.spotify.com/v1/recommendations",
+                params={
+                    "seed_genres": "pop,hip-hop,rock",
+                    "limit": 10,
+                    "market": "US"
+                },
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            
+            if rec_response.status_code == 200:
+                rec_data = rec_response.json()
+                tracks = []
+                for track in rec_data.get("tracks", []):
+                    tracks.append({
+                        "id": track["id"],
+                        "name": track["name"],
+                        "artist": track["artists"][0]["name"] if track["artists"] else "Unknown",
+                        "album": track["album"]["name"] if track.get("album") else None,
+                        "album_image_url": track["album"]["images"][0]["url"] if track.get("album", {}).get("images") else None,
+                        "spotify_uri": track["uri"],
+                        "preview_url": track.get("preview_url")
+                    })
+                return {"tracks": tracks, "fallback": True}
+            
+            return {"tracks": [], "error": "No listening history for recommendations", "no_history": True}
         
         # Get recommendations based on seed tracks
         rec_response = await client.get(
@@ -1232,17 +1396,26 @@ async def get_genre_tracks(session=Depends(get_session), user=Depends(get_curren
         return {"genres": [], "error": "Spotify access expired - please reconnect", "spotify_linked": False}
     
     async with httpx.AsyncClient() as client:
-        # Get user's top artists to determine genres
+        # Get user's top artists to determine genres - try medium term first
         artists_response = await client.get(
             "https://api.spotify.com/v1/me/top/artists",
             params={"limit": 20, "time_range": "medium_term"},
             headers={"Authorization": f"Bearer {access_token}"}
         )
         
-        if artists_response.status_code != 200:
-            return {"genres": [], "error": f"Spotify API error: {artists_response.status_code}"}
+        artists_data = {}
+        if artists_response.status_code == 200:
+            artists_data = artists_response.json()
         
-        artists_data = artists_response.json()
+        # If no medium-term artists, try long-term
+        if not artists_data.get("items"):
+            long_response = await client.get(
+                "https://api.spotify.com/v1/me/top/artists",
+                params={"limit": 20, "time_range": "long_term"},
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            if long_response.status_code == 200:
+                artists_data = long_response.json()
         
         # Count genres
         genre_counts: dict[str, int] = {}
@@ -1250,8 +1423,12 @@ async def get_genre_tracks(session=Depends(get_session), user=Depends(get_curren
             for genre in artist.get("genres", []):
                 genre_counts[genre] = genre_counts.get(genre, 0) + 1
         
-        # Get top 3 genres
+        # Get top 3 genres, or use fallback popular genres
         sorted_genres = sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+        
+        # If no user genres, use popular fallback genres
+        if not sorted_genres:
+            sorted_genres = [("pop", 1), ("hip hop", 1), ("rock", 1)]
         
         result_genres = []
         for genre_name, _ in sorted_genres:
@@ -1279,12 +1456,13 @@ async def get_genre_tracks(session=Depends(get_session), user=Depends(get_curren
                         "spotify_uri": track["uri"]
                     })
                 
-                result_genres.append({
-                    "genre": genre_name.title(),
-                    "tracks": tracks
-                })
+                if tracks:
+                    result_genres.append({
+                        "genre": genre_name.title(),
+                        "tracks": tracks
+                    })
         
-        return {"genres": result_genres}
+        return {"genres": result_genres, "fallback": len(genre_counts) == 0}
 
 # ============= Polls =============
 
