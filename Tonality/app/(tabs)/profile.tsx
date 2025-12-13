@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Switch, Alert, Animated } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Switch, Alert, Animated, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSpotifyAuth } from '../../hooks/useSpotifyAuth';
 import { useTonalityAuth } from '../../context/AuthContext';
@@ -134,6 +134,13 @@ export default function ProfileScreen() {
   const isConnected = Boolean(token);
   console.log('[Profile] Render. isConnected:', isConnected, 'token:', token ? 'Yes' : 'No');
 
+  const openSpotifyProfile = () => {
+    const url = spotifyProfile?.external_urls?.spotify;
+    if (url) {
+      Linking.openURL(url);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -178,8 +185,14 @@ export default function ProfileScreen() {
                 <Text style={styles.connectionValue}>
                   {spotifyProfile?.display_name || 'Spotify User'}
                 </Text>
-                <Text style={styles.connectionEmail}>{spotifyProfile?.username}</Text>
+                <Text style={styles.connectionEmail}>{spotifyProfile?.email || spotifyProfile?.id}</Text>
               </View>
+            )}
+            {isConnected && spotifyProfile?.external_urls?.spotify && (
+              <Pressable style={styles.secondaryButton} onPress={openSpotifyProfile}>
+                <Ionicons name="open-outline" size={16} color={theme.colors.accent} />
+                <Text style={styles.secondaryButtonText}>View in Spotify</Text>
+              </Pressable>
             )}
             {!isLoaded && (
               <Text style={styles.helperText}>Checking your connection…</Text>
@@ -542,9 +555,27 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
+<<<<<<< HEAD
   logoutButtonPressed: {
     opacity: 0.8,
     transform: [{ scale: 0.98 }],
+=======
+  secondaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.accent,
+    backgroundColor: theme.colors.surface,
+    gap: 8,
+  },
+  secondaryButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.accent,
+>>>>>>> origin/main
   },
   logoutText: {
     color: '#fff',
