@@ -72,14 +72,19 @@ export default function HomeScreen() {
     }, [fadeAnim, slideAnim]);
 
     // Clear Spotify-specific data when disconnected, but keep trending
+    // Also refetch when token becomes available (reconnect case)
     useEffect(() => {
         if (!token) {
             setProfile(null);
             setCurrentlyPlaying(null);
             setRecommendations([]);
             setGenreTracks([]);
+        } else if (token && authToken) {
+            // Token just became available (e.g., after reconnect) - refetch personalized data
+            loadRecommendations();
+            loadGenreTracks();
         }
-    }, [token]);
+    }, [token, authToken, loadRecommendations, loadGenreTracks]);
 
     useEffect(() => {
     if (!token) {
@@ -260,12 +265,8 @@ export default function HomeScreen() {
         loadDiscoverSongs();
     }, [loadSongOfDay, loadTrendingSongs, loadDiscoverSongs]);
 
-    useEffect(() => {
-        if (authToken && token) {
-            loadRecommendations();
-            loadGenreTracks();
-        }
-    }, [authToken, token, loadRecommendations, loadGenreTracks]);
+    // This useEffect is now redundant - loading is handled in the token change effect above
+    // Keeping this for initial load when both tokens are already present on mount
 
     useEffect(() => {
         if (!loading && !isAuthenticated) {
