@@ -55,6 +55,14 @@ export const getCommunities = async (token: string): Promise<Community[]> => {
     return response.json();
 };
 
+export const leaveCommunity = async (token: string, id: number): Promise<void> => {
+    const response = await fetch(`${API_BASE_URL}/api/communities/${id}/leave`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error('Failed to leave community');
+};
+
 export const getCommunityDetails = async (token: string, id: number): Promise<Community> => {
     const response = await fetch(`${API_BASE_URL}/api/communities/${id}`, {
         headers: { Authorization: `Bearer ${token}` },

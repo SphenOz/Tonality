@@ -1,14 +1,32 @@
-import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Modal, TextInput, Alert, Animated } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Modal, TextInput, Alert, Animated, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import Reanimated, { FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-native-reanimated';
+import Reanimated, { 
+    FadeIn, 
+    FadeOut, 
+    SlideInDown, 
+    SlideOutDown,
+    FadeInDown,
+    FadeOutUp,
+    Layout,
+    withTiming,
+    Easing,
+    useSharedValue,
+    useAnimatedStyle,
+    interpolate,
+    Extrapolation
+} from 'react-native-reanimated';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import type { Theme } from '../../context/ThemeContext';
 import { Image } from 'expo-image';
 import { useTonalityAuth } from '../../context/AuthContext';
 import { API_BASE_URL } from '../../utils/runtimeConfig';
 import { openInSpotify } from '../../utils/spotifyLinks';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const MODAL_HEIGHT = SCREEN_HEIGHT * 0.7;
 
 interface Friend {
     id: string;
@@ -44,8 +62,6 @@ export default function FriendsScreen() {
     const styles = useMemo(() => createStyles(theme), [theme]);
     const [friends, setFriends] = useState<Friend[]>([]);
     const [loading, setLoading] = useState(true);
-    const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
-    const [showProfile, setShowProfile] = useState(false);
     
     // Friend requests state
     const [incomingRequests, setIncomingRequests] = useState<FriendRequest[]>([]);
@@ -69,6 +85,36 @@ export default function FriendsScreen() {
     const slideAnim = useRef(new Animated.Value(20)).current;
     const modalAnim = useRef(new Animated.Value(0)).current;
     const requestsModalAnim = useRef(new Animated.Value(0)).current;
+    
+    // Reanimated shared values for smoother modal animations
+    const requestsModalProgress = useSharedValue(0);
+    const addModalProgress = useSharedValue(0);
+    
+    // Animated styles for requests modal backdrop
+    const requestsBackdropStyle = useAnimatedStyle(() => ({
+        opacity: interpolate(requestsModalProgress.value, [0, 1], [0, 1]),
+    }));
+    
+    // Animated styles for requests modal content
+    const requestsContentStyle = useAnimatedStyle(() => ({
+        transform: [
+            { translateY: interpolate(requestsModalProgress.value, [0, 1], [MODAL_HEIGHT, 0], Extrapolation.CLAMP) }
+        ],
+        opacity: interpolate(requestsModalProgress.value, [0, 0.5, 1], [0, 1, 1]),
+    }));
+    
+    // Animated styles for add friend modal backdrop
+    const addBackdropStyle = useAnimatedStyle(() => ({
+        opacity: interpolate(addModalProgress.value, [0, 1], [0, 1]),
+    }));
+    
+    // Animated styles for add friend modal content
+    const addContentStyle = useAnimatedStyle(() => ({
+        transform: [
+            { translateY: interpolate(addModalProgress.value, [0, 1], [MODAL_HEIGHT, 0], Extrapolation.CLAMP) }
+        ],
+        opacity: interpolate(addModalProgress.value, [0, 0.5, 1], [0, 1, 1]),
+    }));
 
     const fetchFriends = useCallback(async () => {
         if (!token) return;
@@ -231,23 +277,22 @@ export default function FriendsScreen() {
         }
     };
 
-    // Open requests modal
+    // Open requests modal with smooth animation
     const openRequestsModal = () => {
         setShowRequestsModal(true);
-        Animated.timing(requestsModalAnim, {
-            toValue: 1,
-            duration: 250,
-            useNativeDriver: true,
-        }).start();
+        requestsModalProgress.value = withTiming(1, {
+            duration: 350,
+            easing: Easing.out(Easing.cubic),
+        });
     };
 
-    // Close requests modal
+    // Close requests modal with smooth animation
     const closeRequestsModal = () => {
-        Animated.timing(requestsModalAnim, {
-            toValue: 0,
-            duration: 200,
-            useNativeDriver: true,
-        }).start(() => setShowRequestsModal(false));
+        requestsModalProgress.value = withTiming(0, {
+            duration: 250,
+            easing: Easing.in(Easing.cubic),
+        });
+        setTimeout(() => setShowRequestsModal(false), 250);
     };
 
     // Search for users by username
@@ -338,37 +383,44 @@ export default function FriendsScreen() {
         }
     };
 
-    // Open add friend modal with animation
+    // Open add friend modal with smooth animation
     const openAddModal = () => {
         setShowAddModal(true);
         setSearchQuery('');
         setSearchResults([]);
         setRequestError(null);
         setRequestSuccess(null);
-        Animated.timing(modalAnim, {
-            toValue: 1,
-            duration: 250,
-            useNativeDriver: true,
-        }).start();
+        addModalProgress.value = withTiming(1, {
+            duration: 350,
+            easing: Easing.out(Easing.cubic),
+        });
     };
 
-    // Close add friend modal
+    // Close add friend modal with smooth animation
     const closeAddModal = () => {
-        Animated.timing(modalAnim, {
-            toValue: 0,
-            duration: 200,
-            useNativeDriver: true,
-        }).start(() => {
+        addModalProgress.value = withTiming(0, {
+            duration: 250,
+            easing: Easing.in(Easing.cubic),
+        });
+        setTimeout(() => {
             setShowAddModal(false);
             setSearchQuery('');
             setSearchResults([]);
-        });
+        }, 250);
     };
 
     useEffect(() => {
         fetchFriends();
         fetchFriendRequests();
     }, [fetchFriends, fetchFriendRequests]);
+
+    // Refresh friends list when tab is focused for real-time updates
+    useFocusEffect(
+        useCallback(() => {
+            fetchFriends();
+            fetchFriendRequests();
+        }, [fetchFriends, fetchFriendRequests])
+    );
 
     useEffect(() => {
         // Animate in when data loads
@@ -388,17 +440,13 @@ export default function FriendsScreen() {
         }
     }, [loading, fadeAnim, slideAnim]);
 
+    const router = useRouter();
     const onlineFriends = friends.filter(f => f.isOnline);
     const offlineFriends = friends.filter(f => !f.isOnline);
 
     const handleFriendPress = (friend: Friend) => {
-        setSelectedFriend(friend);
-        setShowProfile(true);
-    };
-
-    const handleCloseProfile = () => {
-        setShowProfile(false);
-        setSelectedFriend(null);
+        // Navigate to the user profile page
+        router.push(`/user/${friend.id}`);
     };
 
     const handleDeleteFriend = async (friendId: string) => {
@@ -410,7 +458,6 @@ export default function FriendsScreen() {
             });
             if (!res.ok) throw new Error('Failed to remove friend');
             setFriends(prev => prev.filter(f => f.id !== friendId));
-            handleCloseProfile();
         } catch (err) {
             console.error('Failed to remove friend:', err);
             alert('Failed to remove friend');
@@ -428,77 +475,6 @@ export default function FriendsScreen() {
         );
     }
 
-    if (showProfile && selectedFriend) {
-        return (
-            <SafeAreaView style={styles.container}>
-                <ScrollView contentContainerStyle={styles.profileContent}>
-                    <Pressable style={styles.backButton} onPress={handleCloseProfile}>
-                        <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-                        <Text style={styles.backButtonText}>Back</Text>
-                    </Pressable>
-
-                    <View style={styles.profileHeader}>
-                        <View style={styles.largeAvatar}>
-                            <Text style={styles.largeAvatarText}>{selectedFriend.name[0]}</Text>
-                        </View>
-                        <Text style={styles.profileName}>{selectedFriend.name}</Text>
-                        <Text style={styles.profileUsername}>{selectedFriend.username}</Text>
-                        <View style={[styles.onlineIndicator, { backgroundColor: selectedFriend.isOnline ? theme.colors.success : theme.colors.textMuted }]}>
-                            <Text style={styles.onlineText}>{selectedFriend.isOnline ? 'Online' : 'Offline'}</Text>
-                        </View>
-                    </View>
-
-                    {selectedFriend.currentlyPlaying && (
-                        <View style={styles.nowPlayingCard}>
-                            <View style={styles.nowPlayingHeader}>
-                                <Ionicons name="musical-note" size={16} color={theme.colors.accent} />
-                                <Text style={styles.nowPlayingLabel}>Now Playing</Text>
-                            </View>
-                            <Text style={styles.nowPlayingSong}>{selectedFriend.currentlyPlaying.name}</Text>
-                            <Text style={styles.nowPlayingArtist}>{selectedFriend.currentlyPlaying.artist}</Text>
-                        </View>
-                    )}
-
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Favorite Genre</Text>
-                        <View style={styles.genreBadge}>
-                            <Ionicons name="disc" size={18} color={theme.colors.accent} />
-                            <Text style={styles.genreText}>{selectedFriend.topGenre || 'Unknown'}</Text>
-                        </View>
-                    </View>
-
-                    {selectedFriend.topSongs && selectedFriend.topSongs.length > 0 && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Top 5 Songs</Text>
-                        {selectedFriend.topSongs.map((song, idx) => (
-                            <View key={idx} style={styles.topSongRow}>
-                                <Text style={styles.topSongNumber}>{idx + 1}</Text>
-                                <Text style={styles.topSongName}>{song}</Text>
-                            </View>
-                        ))}
-                    </View>
-                    )}
-
-                    <View style={styles.actionButtons}>
-                        <Pressable style={styles.compareButton}>
-                            <Ionicons name="git-compare" size={18} color={theme.colors.text} />
-                            <Text style={styles.compareButtonText}>Compare Listening</Text>
-                        </Pressable>
-                        <Pressable style={styles.historyButton}>
-                            <Ionicons name="time" size={18} color={theme.colors.text} />
-                            <Text style={styles.historyButtonText}>View History</Text>
-                        </Pressable>
-                    </View>
-
-                    <Pressable style={styles.deleteButton} onPress={() => handleDeleteFriend(selectedFriend.id)}>
-                        <Ionicons name="person-remove" size={18} color={theme.colors.danger} />
-                        <Text style={styles.deleteButtonText}>Remove Friend</Text>
-                    </Pressable>
-                </ScrollView>
-            </SafeAreaView>
-        );
-    }
-
     return (
         <SafeAreaView style={styles.container}>
             <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -510,7 +486,13 @@ export default function FriendsScreen() {
 
                 {/* Friend Requests Button */}
                 {incomingRequests.length > 0 && (
-                    <Pressable style={styles.requestsButton} onPress={openRequestsModal}>
+                    <Pressable 
+                        style={({ pressed }) => [
+                            styles.requestsButton,
+                            pressed && styles.requestsButtonPressed
+                        ]} 
+                        onPress={openRequestsModal}
+                    >
                         <View style={styles.requestsButtonContent}>
                             <Ionicons name="mail" size={20} color={theme.colors.accent} />
                             <Text style={styles.requestsButtonText}>Friend Requests</Text>
@@ -528,33 +510,44 @@ export default function FriendsScreen() {
                             <Ionicons name="radio" size={18} color={theme.colors.success} />
                             <Text style={styles.sectionTitle}>Listening Now</Text>
                         </View>
-                        {onlineFriends.map(friend => (
-                            <Pressable key={friend.id} style={styles.friendCard} onPress={() => handleFriendPress(friend)}>
-                                <View style={styles.friendRow}>
-                                    <View style={styles.avatarContainer}>
-                                        <View style={styles.avatar}>
-                                            <Text style={styles.avatarText}>{friend.name[0]}</Text>
+                        {onlineFriends.map((friend, index) => (
+                            <Reanimated.View
+                                key={friend.id}
+                                entering={FadeInDown.delay(index * 50).duration(300)}
+                            >
+                                <Pressable 
+                                    style={({ pressed }) => [
+                                        styles.friendCard,
+                                        pressed && styles.friendCardPressed
+                                    ]} 
+                                    onPress={() => handleFriendPress(friend)}
+                                >
+                                    <View style={styles.friendRow}>
+                                        <View style={styles.avatarContainer}>
+                                            <View style={styles.avatar}>
+                                                <Text style={styles.avatarText}>{friend.name[0]}</Text>
+                                            </View>
+                                            <View style={styles.onlineDot} />
                                         </View>
-                                        <View style={styles.onlineDot} />
+                                        <View style={styles.friendInfo}>
+                                            <Text style={styles.friendName}>{friend.name}</Text>
+                                            {friend.currentlyPlaying && (
+                                                <Pressable 
+                                                    style={styles.playingRow}
+                                                    onPress={() => friend.currentlyPlaying?.spotify_uri && openInSpotify({ uri: friend.currentlyPlaying.spotify_uri, type: 'track', name: friend.currentlyPlaying.name })}
+                                                >
+                                                    <Ionicons name="musical-note" size={12} color={theme.colors.accent} />
+                                                    <Text style={styles.playingText} numberOfLines={1}>
+                                                        {friend.currentlyPlaying.name} • {friend.currentlyPlaying.artist}
+                                                    </Text>
+                                                    <Ionicons name="play-circle" size={16} color={theme.colors.accent} />
+                                                </Pressable>
+                                            )}
+                                        </View>
+                                        <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
                                     </View>
-                                    <View style={styles.friendInfo}>
-                                        <Text style={styles.friendName}>{friend.name}</Text>
-                                        {friend.currentlyPlaying && (
-                                            <Pressable 
-                                                style={styles.playingRow}
-                                                onPress={() => friend.currentlyPlaying?.spotify_uri && openInSpotify({ uri: friend.currentlyPlaying.spotify_uri, type: 'track', name: friend.currentlyPlaying.name })}
-                                            >
-                                                <Ionicons name="musical-note" size={12} color={theme.colors.accent} />
-                                                <Text style={styles.playingText} numberOfLines={1}>
-                                                    {friend.currentlyPlaying.name} • {friend.currentlyPlaying.artist}
-                                                </Text>
-                                                <Ionicons name="play-circle" size={16} color={theme.colors.accent} />
-                                            </Pressable>
-                                        )}
-                                    </View>
-                                    <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
-                                </View>
-                            </Pressable>
+                                </Pressable>
+                            </Reanimated.View>
                         ))}
                     </View>
                 )}
@@ -563,32 +556,52 @@ export default function FriendsScreen() {
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>All Friends ({friends.length})</Text>
                     {friends.length === 0 && !loading && (
-                        <View style={styles.emptyState}>
+                        <Reanimated.View 
+                            entering={FadeInDown.duration(400)}
+                            style={styles.emptyState}
+                        >
                             <Ionicons name="people-outline" size={48} color={theme.colors.textMuted} />
                             <Text style={styles.emptyStateText}>No friends yet</Text>
                             <Text style={styles.emptyStateHint}>Add friends to see what they're listening to</Text>
-                        </View>
+                        </Reanimated.View>
                     )}
-                    {friends.map(friend => (
-                        <Pressable key={friend.id} style={styles.friendCard} onPress={() => handleFriendPress(friend)}>
-                            <View style={styles.friendRow}>
-                                <View style={styles.avatarContainer}>
-                                    <View style={styles.avatar}>
-                                        <Text style={styles.avatarText}>{friend.name[0]}</Text>
+                    {friends.map((friend, index) => (
+                        <Reanimated.View
+                            key={friend.id}
+                            entering={FadeInDown.delay(index * 40).duration(300)}
+                        >
+                            <Pressable 
+                                style={({ pressed }) => [
+                                    styles.friendCard,
+                                    pressed && styles.friendCardPressed
+                                ]} 
+                                onPress={() => handleFriendPress(friend)}
+                            >
+                                <View style={styles.friendRow}>
+                                    <View style={styles.avatarContainer}>
+                                        <View style={styles.avatar}>
+                                            <Text style={styles.avatarText}>{friend.name[0]}</Text>
+                                        </View>
+                                        {friend.isOnline && <View style={styles.onlineDot} />}
                                     </View>
-                                    {friend.isOnline && <View style={styles.onlineDot} />}
+                                    <View style={styles.friendInfo}>
+                                        <Text style={styles.friendName}>{friend.name}</Text>
+                                        <Text style={styles.friendUsername}>{friend.username}</Text>
+                                    </View>
+                                    <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
                                 </View>
-                                <View style={styles.friendInfo}>
-                                    <Text style={styles.friendName}>{friend.name}</Text>
-                                    <Text style={styles.friendUsername}>{friend.username}</Text>
-                                </View>
-                                <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
-                            </View>
-                        </Pressable>
+                            </Pressable>
+                        </Reanimated.View>
                     ))}
                 </View>
 
-                <Pressable style={styles.addFriendButton} onPress={openAddModal}>
+                <Pressable 
+                    style={({ pressed }) => [
+                        styles.addFriendButton,
+                        pressed && styles.addFriendButtonPressed
+                    ]} 
+                    onPress={openAddModal}
+                >
                     <Ionicons name="person-add" size={20} color={theme.colors.accent} />
                     <Text style={styles.addFriendText}>Add Friend</Text>
                 </Pressable>
@@ -598,82 +611,94 @@ export default function FriendsScreen() {
             <Modal
                 visible={showRequestsModal}
                 transparent
-                animationType="fade"
-                onRequestClose={() => setShowRequestsModal(false)}
+                animationType="none"
+                onRequestClose={closeRequestsModal}
+                statusBarTranslucent
             >
-                <Pressable style={styles.modalOverlay} onPress={() => setShowRequestsModal(false)}>
-                    <Reanimated.View
-                        style={styles.modalContent}
-                        entering={SlideInDown.springify().damping(20)}
-                        exiting={SlideOutDown.springify().damping(20)}
-                    >
-                        <Pressable style={{ flex: 1 }} onPress={(e) => e.stopPropagation()}>
-                            <View style={styles.modalHeader}>
-                                <Text style={styles.modalTitle}>Friend Requests</Text>
-                                <Pressable onPress={() => setShowRequestsModal(false)}>
-                                    <Ionicons name="close" size={24} color={theme.colors.text} />
-                                </Pressable>
-                            </View>
+                <Reanimated.View style={[styles.modalOverlay, requestsBackdropStyle]}>
+                    <Pressable style={StyleSheet.absoluteFill} onPress={closeRequestsModal} />
+                    <Reanimated.View style={[styles.modalContent, requestsContentStyle]}>
+                        <View style={styles.modalHandle} />
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Friend Requests</Text>
+                            <Pressable 
+                                onPress={closeRequestsModal}
+                                style={({ pressed }) => [
+                                    styles.closeButton,
+                                    pressed && styles.closeButtonPressed
+                                ]}
+                            >
+                                <Ionicons name="close" size={24} color={theme.colors.text} />
+                            </Pressable>
+                        </View>
 
-                            <ScrollView style={styles.requestsList} contentContainerStyle={{ flexGrow: 1 }}>
-                                {loadingRequests ? (
-                                    <ActivityIndicator size="large" color={theme.colors.accent} style={{ paddingVertical: 40 }} />
-                                ) : incomingRequests.length === 0 ? (
-                                    <View style={styles.emptyRequestsState}>
-                                        <Ionicons name="mail-outline" size={48} color={theme.colors.textMuted} />
-                                        <Text style={styles.emptyRequestsText}>No pending requests</Text>
-                                        <Text style={styles.emptyRequestsHint}>Friend requests you receive will appear here</Text>
-                                    </View>
-                                ) : (
-                                    incomingRequests.map((request) => {
-                                        console.log('Rendering request:', request);
-                                        return (
-                                        <View
-                                            key={request.request_id}
-                                            style={styles.requestCard}
-                                        >
-                                            <View style={styles.requestAvatar}>
-                                                <Text style={styles.requestAvatarText}>
-                                                    {(request.spotify_display_name || request.username || '?')[0]?.toUpperCase()}
-                                                </Text>
-                                            </View>
-                                            <View style={styles.requestInfo}>
-                                                <Text style={styles.requestName}>
-                                                    {request.spotify_display_name || request.username || 'Unknown User'}
-                                                </Text>
-                                                <Text style={styles.requestUsername}>@{request.username || 'unknown'}</Text>
-                                                <Text style={styles.requestTime}>
-                                                    {request.created_at ? new Date(request.created_at).toLocaleDateString() : 'Unknown date'}
-                                                </Text>
-                                            </View>
-                                            <View style={styles.requestActions}>
-                                                <Pressable
-                                                    style={styles.acceptButton}
-                                                    onPress={() => acceptRequest(request.request_id)}
-                                                    disabled={processingRequest === request.request_id}
-                                                >
-                                                    {processingRequest === request.request_id ? (
-                                                        <ActivityIndicator size="small" color="#fff" />
-                                                    ) : (
-                                                        <Ionicons name="checkmark" size={20} color="#fff" />
-                                                    )}
-                                                </Pressable>
-                                                <Pressable
-                                                    style={styles.rejectButton}
-                                                    onPress={() => rejectRequest(request.request_id)}
-                                                    disabled={processingRequest === request.request_id}
-                                                >
-                                                    <Ionicons name="close" size={20} color={theme.colors.danger} />
-                                                </Pressable>
-                                            </View>
+                        <ScrollView 
+                            style={styles.requestsList} 
+                            contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}
+                            showsVerticalScrollIndicator={false}
+                        >
+                            {loadingRequests ? (
+                                <ActivityIndicator size="large" color={theme.colors.accent} style={{ paddingVertical: 40 }} />
+                            ) : incomingRequests.length === 0 ? (
+                                <View style={styles.emptyRequestsState}>
+                                    <Ionicons name="mail-outline" size={48} color={theme.colors.textMuted} />
+                                    <Text style={styles.emptyRequestsText}>No pending requests</Text>
+                                    <Text style={styles.emptyRequestsHint}>Friend requests you receive will appear here</Text>
+                                </View>
+                            ) : (
+                                incomingRequests.map((request, index) => (
+                                    <Reanimated.View
+                                        key={request.request_id}
+                                        entering={FadeInDown.delay(index * 50).duration(300)}
+                                        layout={Layout.springify().damping(15)}
+                                        style={styles.requestCard}
+                                    >
+                                        <View style={styles.requestAvatar}>
+                                            <Text style={styles.requestAvatarText}>
+                                                {(request.spotify_display_name || request.username || '?')[0]?.toUpperCase()}
+                                            </Text>
                                         </View>
-                                        );
-                                    })
-                                )}
-                            </ScrollView>
-                        </Pressable>
+                                        <View style={styles.requestInfo}>
+                                            <Text style={styles.requestName}>
+                                                {request.spotify_display_name || request.username || 'Unknown User'}
+                                            </Text>
+                                            <Text style={styles.requestUsername}>@{request.username || 'unknown'}</Text>
+                                            <Text style={styles.requestTime}>
+                                                {request.created_at ? new Date(request.created_at).toLocaleDateString() : 'Unknown date'}
+                                            </Text>
+                                        </View>
+                                        <View style={styles.requestActions}>
+                                            <Pressable
+                                                style={({ pressed }) => [
+                                                    styles.acceptButton,
+                                                    pressed && styles.acceptButtonPressed
+                                                ]}
+                                                onPress={() => acceptRequest(request.request_id)}
+                                                disabled={processingRequest === request.request_id}
+                                            >
+                                                {processingRequest === request.request_id ? (
+                                                    <ActivityIndicator size="small" color="#fff" />
+                                                ) : (
+                                                    <Ionicons name="checkmark" size={20} color="#fff" />
+                                                )}
+                                            </Pressable>
+                                            <Pressable
+                                                style={({ pressed }) => [
+                                                    styles.rejectButton,
+                                                    pressed && styles.rejectButtonPressed
+                                                ]}
+                                                onPress={() => rejectRequest(request.request_id)}
+                                                disabled={processingRequest === request.request_id}
+                                            >
+                                                <Ionicons name="close" size={20} color={theme.colors.danger} />
+                                            </Pressable>
+                                        </View>
+                                    </Reanimated.View>
+                                ))
+                            )}
+                        </ScrollView>
                     </Reanimated.View>
-                </Pressable>
+                </Reanimated.View>
             </Modal>
 
             {/* Add Friend Modal */}
@@ -682,138 +707,151 @@ export default function FriendsScreen() {
                 transparent
                 animationType="none"
                 onRequestClose={closeAddModal}
+                statusBarTranslucent
             >
-                <Pressable style={styles.modalOverlay} onPress={closeAddModal}>
-                    <Animated.View 
-                        style={[
-                            styles.modalContent,
-                            {
-                                opacity: modalAnim,
-                                transform: [{
-                                    translateY: modalAnim.interpolate({
-                                        inputRange: [0, 1],
-                                        outputRange: [50, 0],
-                                    }),
-                                }],
-                            },
-                        ]}
-                    >
-                        <Pressable onPress={(e) => e.stopPropagation()}>
-                            <View style={styles.modalHeader}>
-                                <Text style={styles.modalTitle}>Add Friend</Text>
-                                <Pressable onPress={closeAddModal} hitSlop={10}>
-                                    <Ionicons name="close" size={24} color={theme.colors.text} />
-                                </Pressable>
-                            </View>
-
-                            <View style={styles.searchContainer}>
-                                <Ionicons name="search" size={20} color={theme.colors.textMuted} />
-                                <TextInput
-                                    style={styles.searchInput}
-                                    placeholder="Enter username..."
-                                    placeholderTextColor={theme.colors.textMuted}
-                                    value={searchQuery}
-                                    onChangeText={(text) => {
-                                        setSearchQuery(text);
-                                        setRequestError(null);
-                                        setRequestSuccess(null);
-                                    }}
-                                    autoCapitalize="none"
-                                    autoCorrect={false}
-                                    onSubmitEditing={handleSendRequestByUsername}
-                                    returnKeyType="send"
-                                />
-                                {searching && <ActivityIndicator size="small" color={theme.colors.accent} />}
-                            </View>
-
-                            {/* Send Request Button */}
-                            <Pressable
-                                style={[
-                                    styles.sendRequestButton,
-                                    (!searchQuery.trim() || sendingRequest) && styles.sendRequestButtonDisabled
+                <Reanimated.View style={[styles.modalOverlay, addBackdropStyle]}>
+                    <Pressable style={StyleSheet.absoluteFill} onPress={closeAddModal} />
+                    <Reanimated.View style={[styles.modalContent, addContentStyle]}>
+                        <View style={styles.modalHandle} />
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Add Friend</Text>
+                            <Pressable 
+                                onPress={closeAddModal} 
+                                hitSlop={10}
+                                style={({ pressed }) => [
+                                    styles.closeButton,
+                                    pressed && styles.closeButtonPressed
                                 ]}
-                                onPress={handleSendRequestByUsername}
-                                disabled={!searchQuery.trim() || sendingRequest}
                             >
-                                {sendingRequest ? (
-                                    <ActivityIndicator size="small" color="#fff" />
-                                ) : (
-                                    <>
-                                        <Ionicons name="send" size={18} color="#fff" />
-                                        <Text style={styles.sendRequestButtonText}>Send Friend Request</Text>
-                                    </>
-                                )}
+                                <Ionicons name="close" size={24} color={theme.colors.text} />
                             </Pressable>
+                        </View>
 
-                            {/* Error Message */}
-                            {requestError && (
-                                <View style={styles.errorMessage}>
-                                    <Ionicons name="alert-circle" size={18} color={theme.colors.danger} />
-                                    <Text style={styles.errorMessageText}>{requestError}</Text>
-                                </View>
+                        <View style={styles.searchContainer}>
+                            <Ionicons name="search" size={20} color={theme.colors.textMuted} />
+                            <TextInput
+                                style={styles.searchInput}
+                                placeholder="Enter username..."
+                                placeholderTextColor={theme.colors.textMuted}
+                                value={searchQuery}
+                                onChangeText={(text) => {
+                                    setSearchQuery(text);
+                                    setRequestError(null);
+                                    setRequestSuccess(null);
+                                }}
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                onSubmitEditing={handleSendRequestByUsername}
+                                returnKeyType="send"
+                            />
+                            {searching && <ActivityIndicator size="small" color={theme.colors.accent} />}
+                        </View>
+
+                        {/* Send Request Button */}
+                        <Pressable
+                            style={({ pressed }) => [
+                                styles.sendRequestButton,
+                                (!searchQuery.trim() || sendingRequest) && styles.sendRequestButtonDisabled,
+                                pressed && searchQuery.trim() && !sendingRequest && styles.sendRequestButtonPressed
+                            ]}
+                            onPress={handleSendRequestByUsername}
+                            disabled={!searchQuery.trim() || sendingRequest}
+                        >
+                            {sendingRequest ? (
+                                <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                                <>
+                                    <Ionicons name="send" size={18} color="#fff" />
+                                    <Text style={styles.sendRequestButtonText}>Send Friend Request</Text>
+                                </>
                             )}
-
-                            {/* Success Message */}
-                            {requestSuccess && (
-                                <View style={styles.successMessage}>
-                                    <Ionicons name="checkmark-circle" size={18} color={theme.colors.success} />
-                                    <Text style={styles.successMessageText}>{requestSuccess}</Text>
-                                </View>
-                            )}
-
-                            <View style={styles.dividerContainer}>
-                                <View style={styles.divider} />
-                                <Text style={styles.dividerText}>or search users</Text>
-                                <View style={styles.divider} />
-                            </View>
-
-                            <ScrollView style={styles.searchResults} keyboardShouldPersistTaps="handled">
-                                {searchQuery.length > 0 && searchQuery.length < 2 && (
-                                    <Text style={styles.searchHint}>Type at least 2 characters to search</Text>
-                                )}
-                                {searchQuery.length >= 2 && searchResults.length === 0 && !searching && (
-                                    <Text style={styles.searchHint}>No users found</Text>
-                                )}
-                                {searchResults.map((user) => (
-                                    <View key={user.id} style={styles.searchResultItem}>
-                                        <View style={styles.searchResultAvatar}>
-                                            <Text style={styles.searchResultAvatarText}>
-                                                {(user.spotify_display_name || user.username)[0].toUpperCase()}
-                                            </Text>
-                                        </View>
-                                        <View style={styles.searchResultInfo}>
-                                            <Text style={styles.searchResultName}>
-                                                {user.spotify_display_name || user.username}
-                                            </Text>
-                                            <Text style={styles.searchResultUsername}>@{user.username}</Text>
-                                        </View>
-                                        {user.is_friend ? (
-                                            <View style={styles.alreadyFriendBadge}>
-                                                <Ionicons name="checkmark" size={14} color={theme.colors.success} />
-                                                <Text style={styles.alreadyFriendText}>Friends</Text>
-                                            </View>
-                                        ) : (
-                                            <Pressable
-                                                style={styles.addButton}
-                                                onPress={() => handleAddFriend(user.id)}
-                                                disabled={addingFriend === user.id}
-                                            >
-                                                {addingFriend === user.id ? (
-                                                    <ActivityIndicator size="small" color="#fff" />
-                                                ) : (
-                                                    <>
-                                                        <Ionicons name="person-add" size={16} color="#fff" />
-                                                        <Text style={styles.addButtonText}>Add</Text>
-                                                    </>
-                                                )}
-                                            </Pressable>
-                                        )}
-                                    </View>
-                                ))}
-                            </ScrollView>
                         </Pressable>
-                    </Animated.View>
-                </Pressable>
+
+                        {/* Error Message */}
+                        {requestError && (
+                            <Reanimated.View 
+                                entering={FadeInDown.duration(200)}
+                                style={styles.errorMessage}
+                            >
+                                <Ionicons name="alert-circle" size={18} color={theme.colors.danger} />
+                                <Text style={styles.errorMessageText}>{requestError}</Text>
+                            </Reanimated.View>
+                        )}
+
+                        {/* Success Message */}
+                        {requestSuccess && (
+                            <Reanimated.View 
+                                entering={FadeInDown.duration(200)}
+                                style={styles.successMessage}
+                            >
+                                <Ionicons name="checkmark-circle" size={18} color={theme.colors.success} />
+                                <Text style={styles.successMessageText}>{requestSuccess}</Text>
+                            </Reanimated.View>
+                        )}
+
+                        <View style={styles.dividerContainer}>
+                            <View style={styles.divider} />
+                            <Text style={styles.dividerText}>or search users</Text>
+                            <View style={styles.divider} />
+                        </View>
+
+                        <ScrollView 
+                            style={styles.searchResults} 
+                            keyboardShouldPersistTaps="handled"
+                            showsVerticalScrollIndicator={false}
+                        >
+                            {searchQuery.length > 0 && searchQuery.length < 2 && (
+                                <Text style={styles.searchHint}>Type at least 2 characters to search</Text>
+                            )}
+                            {searchQuery.length >= 2 && searchResults.length === 0 && !searching && (
+                                <Text style={styles.searchHint}>No users found</Text>
+                            )}
+                            {searchResults.map((user, index) => (
+                                <Reanimated.View 
+                                    key={user.id} 
+                                    entering={FadeInDown.delay(index * 30).duration(200)}
+                                    style={styles.searchResultItem}
+                                >
+                                    <View style={styles.searchResultAvatar}>
+                                        <Text style={styles.searchResultAvatarText}>
+                                            {(user.spotify_display_name || user.username)[0].toUpperCase()}
+                                        </Text>
+                                    </View>
+                                    <View style={styles.searchResultInfo}>
+                                        <Text style={styles.searchResultName}>
+                                            {user.spotify_display_name || user.username}
+                                        </Text>
+                                        <Text style={styles.searchResultUsername}>@{user.username}</Text>
+                                    </View>
+                                    {user.is_friend ? (
+                                        <View style={styles.alreadyFriendBadge}>
+                                            <Ionicons name="checkmark" size={14} color={theme.colors.success} />
+                                            <Text style={styles.alreadyFriendText}>Friends</Text>
+                                        </View>
+                                    ) : (
+                                        <Pressable
+                                            style={({ pressed }) => [
+                                                styles.addButton,
+                                                pressed && styles.addButtonPressed
+                                            ]}
+                                            onPress={() => handleAddFriend(user.id)}
+                                            disabled={addingFriend === user.id}
+                                        >
+                                            {addingFriend === user.id ? (
+                                                <ActivityIndicator size="small" color="#fff" />
+                                            ) : (
+                                                <>
+                                                    <Ionicons name="person-add" size={16} color="#fff" />
+                                                    <Text style={styles.addButtonText}>Add</Text>
+                                                </>
+                                            )}
+                                        </Pressable>
+                                    )}
+                                </Reanimated.View>
+                            ))}
+                        </ScrollView>
+                    </Reanimated.View>
+                </Reanimated.View>
             </Modal>
         </SafeAreaView>
     );
@@ -893,6 +931,11 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         padding: 16,
         borderWidth: 1,
         borderColor: theme.colors.border,
+        marginBottom: 8,
+    },
+    friendCardPressed: {
+        backgroundColor: theme.colors.border,
+        transform: [{ scale: 0.98 }],
     },
     friendRow: {
         flexDirection: 'row',
@@ -959,6 +1002,10 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         borderWidth: 1,
         borderColor: theme.colors.accent,
         borderStyle: 'dashed',
+    },
+    addFriendButtonPressed: {
+        backgroundColor: theme.colors.accentMuted,
+        transform: [{ scale: 0.98 }],
     },
     addFriendText: {
         color: theme.colors.accent,
@@ -1135,34 +1182,56 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     },
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
         justifyContent: 'flex-end',
     },
     modalContent: {
         backgroundColor: theme.colors.background,
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-        height: '80%',
-        padding: 24,
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        height: MODAL_HEIGHT,
+        paddingHorizontal: 24,
+        paddingTop: 12,
+        paddingBottom: 24,
         shadowColor: '#000',
         shadowOffset: {
             width: 0,
-            height: -4,
+            height: -8,
         },
-        shadowOpacity: 0.25,
-        shadowRadius: 8,
-        elevation: 5,
+        shadowOpacity: 0.3,
+        shadowRadius: 16,
+        elevation: 10,
+    },
+    modalHandle: {
+        width: 40,
+        height: 4,
+        backgroundColor: theme.colors.border,
+        borderRadius: 2,
+        alignSelf: 'center',
+        marginBottom: 16,
     },
     modalHeader: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: 24,
+        marginBottom: 20,
     },
     modalTitle: {
-        fontSize: 24,
+        fontSize: 22,
         fontWeight: '700',
         color: theme.colors.text,
+    },
+    closeButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: theme.colors.surface,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    closeButtonPressed: {
+        backgroundColor: theme.colors.border,
+        transform: [{ scale: 0.95 }],
     },
     requestsButton: {
         flexDirection: 'row',
@@ -1174,6 +1243,10 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         marginBottom: 24,
         borderWidth: 1,
         borderColor: theme.colors.border,
+    },
+    requestsButtonPressed: {
+        backgroundColor: theme.colors.border,
+        transform: [{ scale: 0.98 }],
     },
     requestsButtonContent: {
         flexDirection: 'row',
@@ -1272,6 +1345,10 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
+    acceptButtonPressed: {
+        opacity: 0.8,
+        transform: [{ scale: 0.95 }],
+    },
     rejectButton: {
         width: 40,
         height: 40,
@@ -1281,6 +1358,10 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         borderColor: theme.colors.border,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    rejectButtonPressed: {
+        backgroundColor: theme.colors.border,
+        transform: [{ scale: 0.95 }],
     },
     searchContainer: {
         flexDirection: 'row',
@@ -1346,6 +1427,10 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 8,
     },
+    addButtonPressed: {
+        opacity: 0.8,
+        transform: [{ scale: 0.95 }],
+    },
     addButtonText: {
         fontSize: 14,
         fontWeight: '600',
@@ -1389,6 +1474,10 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     },
     sendRequestButtonDisabled: {
         opacity: 0.5,
+    },
+    sendRequestButtonPressed: {
+        opacity: 0.85,
+        transform: [{ scale: 0.98 }],
     },
     sendRequestButtonText: {
         fontSize: 16,

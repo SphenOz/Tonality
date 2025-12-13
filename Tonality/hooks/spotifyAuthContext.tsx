@@ -11,6 +11,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { Alert } from 'react-native';
 import { useTonalityAuth } from '../context/AuthContext';
 import { API_BASE_URL, SPOTIFY_CLIENT_ID } from '../utils/runtimeConfig';
 
@@ -47,6 +48,7 @@ interface SpotifyAuthContextValue {
     options?: AuthSession.AuthRequestPromptOptions
   ) => Promise<AuthSession.AuthSessionResult | undefined>;
   disconnect: () => Promise<void>;
+  refreshToken: () => Promise<string | null>;
 }
 
 const SpotifyAuthContext =
@@ -285,16 +287,114 @@ function useProvideSpotifyAuth(): SpotifyAuthContextValue {
     }
   }, [exchangeCodeForToken, response]);
 
+  const refreshToken = useCallback(async () => {
+    if (!refreshStorageKey) {
+        console.warn('[SpotifyAuth] No refresh storage key available');
+        return null;
+    }
+    try {
+      const refresh_token = await SecureStore.getItemAsync(refreshStorageKey);
+      if (!refresh_token) {
+        console.warn('[SpotifyAuth] No refresh token available');
+        return null;
+      }
+
+      console.log('[SpotifyAuth] Refreshing token...');
+      const body = new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token,
+        client_id: CLIENT_ID,
+      }).toString();
+
+      const r = await fetch('https://accounts.spotify.com/api/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      });
+      
+      const json = await r.json();
+      if (!r.ok) {
+        console.error('[SpotifyAuth] Refresh token error:', r.status, json);
+        // If the refresh token is invalid/revoked, clear the session so the user can re-login
+        if (json.error === 'invalid_grant') {
+            console.log('[SpotifyAuth] Refresh token revoked or invalid. Clearing session.');
+            setToken(null);
+            if (storageKey) await SecureStore.deleteItemAsync(storageKey);
+            if (refreshStorageKey) await SecureStore.deleteItemAsync(refreshStorageKey);
+        }
+        return null;
+      }
+
+      if (json.access_token) {
+        console.log('[SpotifyAuth] Token refreshed successfully');
+        setToken(json.access_token);
+        if (storageKey) {
+          await SecureStore.setItemAsync(storageKey, json.access_token);
+        }
+        // If we get a new refresh token, update it too
+        if (json.refresh_token && refreshStorageKey) {
+             await SecureStore.setItemAsync(refreshStorageKey, json.refresh_token);
+        }
+        return json.access_token;
+      }
+    } catch (e) {
+      console.error('[SpotifyAuth] Token refresh failed', e);
+    }
+    return null;
+  }, [refreshStorageKey, storageKey]);
+
   const disconnect = useCallback(async () => {
+    console.log('[SpotifyAuth] Disconnecting Spotify...', { hasAuthToken: !!authToken, authToken: authToken?.substring(0, 20) });
+    
+    // Notify backend to clear Spotify data FIRST before clearing local state
+    if (authToken) {
+      try {
+        console.log('[SpotifyAuth] Calling backend disconnect endpoint:', `${API_BASE_URL}/api/disconnect_spotify`);
+        const response = await fetch(`${API_BASE_URL}/api/disconnect_spotify`, {
+          method: 'POST',
+          headers: { 
+            Authorization: `Bearer ${authToken}`,
+            'Content-Type': 'application/json'
+          },
+        });
+        const responseText = await response.text();
+        console.log('[SpotifyAuth] Backend disconnect response:', response.status, responseText);
+        if (response.ok) {
+          console.log('[SpotifyAuth] Backend notified of disconnect successfully');
+        } else {
+          console.warn('[SpotifyAuth] Backend disconnect failed:', response.status, responseText);
+          Alert.alert('Disconnect Warning', `Backend returned ${response.status}: ${responseText}`);
+        }
+      } catch (e: any) {
+        console.error('[SpotifyAuth] Failed to notify backend of disconnect:', e);
+        Alert.alert('Disconnect Error', `Failed to call backend: ${e.message}`);
+      }
+    } else {
+      console.warn('[SpotifyAuth] No authToken available, skipping backend disconnect call');
+      Alert.alert('Disconnect Warning', 'No auth token available - backend will not be notified');
+    }
+    
+    // Clear local state after backend call
     setToken(null);
+    
+    // Clear local storage
     if (storageKey) {
       await SecureStore.deleteItemAsync(storageKey);
     }
     if (refreshStorageKey) {
-      //also clear the stored refresh token
       await SecureStore.deleteItemAsync(refreshStorageKey);
     }
-  }, [storageKey, refreshStorageKey]);
+    
+    // Also clear the verifier and state
+    try {
+      await SecureStore.deleteItemAsync(CV_KEY);
+      await SecureStore.deleteItemAsync(STATE_KEY);
+    } catch (e) {
+      // Ignore errors clearing these
+    }
+    
+    console.log('[SpotifyAuth] Spotify disconnected successfully');
+  }, [storageKey, refreshStorageKey, authToken]);
 
   const promptAsync = useCallback(
     async (options?: AuthSession.AuthRequestPromptOptions) => {
@@ -329,6 +429,7 @@ function useProvideSpotifyAuth(): SpotifyAuthContextValue {
     promptAsync,
     request,
     disconnect,
+    refreshToken,
     isLoaded,
   };
 }

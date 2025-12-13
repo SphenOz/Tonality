@@ -87,11 +87,22 @@ export async function openInSpotify(item: SpotifyItem): Promise<boolean> {
   
   try {
     // First, try to open in Spotify app
-    const canOpenApp = await Linking.canOpenURL(appUri);
-    
-    if (canOpenApp) {
-      await Linking.openURL(appUri);
-      return true;
+    try {
+      // Check if we can open the URL (requires LSApplicationQueriesSchemes on iOS)
+      const canOpenApp = await Linking.canOpenURL(appUri);
+      
+      if (canOpenApp) {
+        await Linking.openURL(appUri);
+        return true;
+      } else {
+        // On iOS, canOpenURL might return false if the scheme isn't in Info.plist
+        // (which happens in Expo Go). Try to open it anyway.
+        await Linking.openURL(appUri);
+        return true;
+      }
+    } catch (error) {
+      // If openURL fails, it means the app is likely not installed
+      console.log('[SpotifyLinks] Could not open app directly, falling back to prompt:', error);
     }
     
     // Fallback: Show alert with options

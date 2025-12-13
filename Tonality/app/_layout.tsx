@@ -16,13 +16,15 @@ function RootLayoutNav() {
     if (loading) return;
 
     const inTabsGroup = segments[0] === '(tabs)';
+    const isPublicRoute = segments[0] === 'index' || segments[0] === 'login';
+    const isProtectedRoute = !isPublicRoute;
 
-    if (isAuthenticated && !inTabsGroup) {
-      // Logged in but not in tabs -> go to tabs
+    if (isAuthenticated && isPublicRoute) {
+      // Logged in but on public route -> go to tabs
       console.log("RootLayout: Redirecting to tabs");
       router.replace('/(tabs)');
-    } else if (!isAuthenticated && inTabsGroup) {
-      // Not logged in but in tabs -> go to login
+    } else if (!isAuthenticated && isProtectedRoute) {
+      // Not logged in but on protected route -> go to login
       console.log("RootLayout: Redirecting to login");
       router.replace('/');
     }
@@ -37,11 +39,11 @@ function RootLayoutNav() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack screenOptions={{ headerShown: false, animation: 'fade_from_bottom' }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="community/[id]" options={{ headerShown: true }} />
-      <Stack.Screen name="user/[id]" options={{ headerShown: true }} />
+      <Stack.Screen name="community/[id]" options={{ headerShown: true, animation: 'slide_from_right' }} />
+      <Stack.Screen name="user/[id]" options={{ headerShown: true, animation: 'slide_from_right' }} />
     </Stack>
   );
 }

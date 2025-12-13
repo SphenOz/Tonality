@@ -12,7 +12,7 @@ import { useRouter } from 'expo-router';
 import { API_BASE_URL } from '../../utils/runtimeConfig';
 
 export default function ProfileScreen() {
-  const { token, promptAsync, disconnect, isLoaded } = useSpotifyAuth();
+  const { token, promptAsync, disconnect, isLoaded, refreshToken } = useSpotifyAuth();
   const { user, token: authToken, logout } = useTonalityAuth();
   const { theme, setThemeMode } = useTheme();
   const router = useRouter();
@@ -28,6 +28,7 @@ export default function ProfileScreen() {
   const [isOnline, setIsOnline] = useState(true);
   const [showListeningActivity, setShowListeningActivity] = useState(true);
   const [allowFriendRequests, setAllowFriendRequests] = useState(true);
+  const [loadingSettings, setLoadingSettings] = useState(true);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -36,6 +37,65 @@ export default function ProfileScreen() {
       useNativeDriver: true,
     }).start();
   }, [fadeAnim]);
+
+  // Fetch user settings from backend
+  useEffect(() => {
+    const fetchSettings = async () => {
+      if (!authToken) return;
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/user/settings`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setIsOnline(data.is_online ?? true);
+          setShowListeningActivity(data.show_listening_activity ?? true);
+          setAllowFriendRequests(data.allow_friend_requests ?? true);
+        }
+      } catch (err) {
+        console.error('Failed to fetch user settings:', err);
+      } finally {
+        setLoadingSettings(false);
+      }
+    };
+    fetchSettings();
+  }, [authToken]);
+
+  // Update settings in backend
+  const updateSetting = async (key: string, value: boolean) => {
+    if (!authToken) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/user/settings`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ [key]: value }),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to update setting');
+      }
+    } catch (err) {
+      console.error(`Failed to update ${key}:`, err);
+      Alert.alert('Error', 'Failed to update setting. Please try again.');
+    }
+  };
+
+  const handleOnlineChange = (value: boolean) => {
+    setIsOnline(value);
+    updateSetting('is_online', value);
+  };
+
+  const handleListeningActivityChange = (value: boolean) => {
+    setShowListeningActivity(value);
+    updateSetting('show_listening_activity', value);
+  };
+
+  const handleFriendRequestsChange = (value: boolean) => {
+    setAllowFriendRequests(value);
+    updateSetting('allow_friend_requests', value);
+  };
 
   useEffect(() => {
     if (!token) {
@@ -47,7 +107,12 @@ export default function ProfileScreen() {
     setLoadingProfile(true);
     fetchUserProfile(token)
       .then(setSpotifyProfile)
-      .catch(err => console.error('Failed to load Spotify profile', err))
+      .catch(async (err) => {
+        console.error('Failed to load Spotify profile', err);
+        if (err.message && err.message.includes('401')) {
+          await refreshToken();
+        }
+      })
       .finally(() => setLoadingProfile(false));
   }, [token]);
 
@@ -56,14 +121,18 @@ export default function ProfileScreen() {
   };
 
   const handleSpotifyAction = () => {
+    console.log('[Profile] handleSpotifyAction called. token:', !!token);
     if (token) {
+      console.log('[Profile] Calling disconnect()');
       disconnect();
     } else {
+      console.log('[Profile] Calling promptAsync()');
       promptAsync();
     }
   };
 
   const isConnected = Boolean(token);
+  console.log('[Profile] Render. isConnected:', isConnected, 'token:', token ? 'Yes' : 'No');
 
   return (
     <SafeAreaView style={styles.container}>
@@ -121,9 +190,10 @@ export default function ProfileScreen() {
               </Text>
             )}
             <Pressable
-              style={[
+              style={({ pressed }) => [
                 styles.primaryButton,
                 { backgroundColor: isConnected ? theme.colors.surfaceMuted : theme.colors.accent },
+                pressed && styles.primaryButtonPressed,
               ]}
               onPress={handleSpotifyAction}
             >
@@ -149,9 +219,10 @@ export default function ProfileScreen() {
                 <Pressable
                   key={mode}
                   onPress={() => handleThemeSelect(mode)}
-                  style={[
+                  style={({ pressed }) => [
                     styles.themeToggle,
                     theme.mode === mode && styles.themeToggleActive,
+                    pressed && styles.themeTogglePressed,
                   ]}
                 >
                   <Text
@@ -172,57 +243,63 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Status & Privacy</Text>
           <View style={styles.card}>
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <View style={styles.settingLabelRow}>
-                  <Ionicons name="radio-button-on" size={18} color={isOnline ? theme.colors.accent : theme.colors.textMuted} />
-                  <Text style={styles.settingLabel}>Online Status</Text>
+            {loadingSettings ? (
+              <ActivityIndicator size="small" color={theme.colors.accent} style={{ padding: 20 }} />
+            ) : (
+              <>
+                <View style={styles.settingRow}>
+                  <View style={styles.settingInfo}>
+                    <View style={styles.settingLabelRow}>
+                      <Ionicons name="radio-button-on" size={18} color={isOnline ? theme.colors.accent : theme.colors.textMuted} />
+                      <Text style={styles.settingLabel}>Online Status</Text>
+                    </View>
+                    <Text style={styles.settingHint}>Show friends when you're active</Text>
+                  </View>
+                  <Switch
+                    value={isOnline}
+                    onValueChange={handleOnlineChange}
+                    trackColor={{ false: theme.colors.surfaceMuted, true: theme.colors.accentMuted }}
+                    thumbColor={isOnline ? theme.colors.accent : theme.colors.textMuted}
+                  />
                 </View>
-                <Text style={styles.settingHint}>Show friends when you're active</Text>
-              </View>
-              <Switch
-                value={isOnline}
-                onValueChange={setIsOnline}
-                trackColor={{ false: theme.colors.surfaceMuted, true: theme.colors.accentMuted }}
-                thumbColor={isOnline ? theme.colors.accent : theme.colors.textMuted}
-              />
-            </View>
 
-            <View style={styles.divider} />
+                <View style={styles.divider} />
 
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <View style={styles.settingLabelRow}>
-                  <Ionicons name="musical-notes" size={18} color={theme.colors.text} />
-                  <Text style={styles.settingLabel}>Show Listening Activity</Text>
+                <View style={styles.settingRow}>
+                  <View style={styles.settingInfo}>
+                    <View style={styles.settingLabelRow}>
+                      <Ionicons name="musical-notes" size={18} color={theme.colors.text} />
+                      <Text style={styles.settingLabel}>Show Listening Activity</Text>
+                    </View>
+                    <Text style={styles.settingHint}>Let friends see what you're playing</Text>
+                  </View>
+                  <Switch
+                    value={showListeningActivity}
+                    onValueChange={handleListeningActivityChange}
+                    trackColor={{ false: theme.colors.surfaceMuted, true: theme.colors.accentMuted }}
+                    thumbColor={showListeningActivity ? theme.colors.accent : theme.colors.textMuted}
+                  />
                 </View>
-                <Text style={styles.settingHint}>Let friends see what you're playing</Text>
-              </View>
-              <Switch
-                value={showListeningActivity}
-                onValueChange={setShowListeningActivity}
-                trackColor={{ false: theme.colors.surfaceMuted, true: theme.colors.accentMuted }}
-                thumbColor={showListeningActivity ? theme.colors.accent : theme.colors.textMuted}
-              />
-            </View>
 
-            <View style={styles.divider} />
+                <View style={styles.divider} />
 
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <View style={styles.settingLabelRow}>
-                  <Ionicons name="person-add" size={18} color={theme.colors.text} />
-                  <Text style={styles.settingLabel}>Allow Friend Requests</Text>
+                <View style={styles.settingRow}>
+                  <View style={styles.settingInfo}>
+                    <View style={styles.settingLabelRow}>
+                      <Ionicons name="person-add" size={18} color={theme.colors.text} />
+                      <Text style={styles.settingLabel}>Allow Friend Requests</Text>
+                    </View>
+                    <Text style={styles.settingHint}>Others can send you friend requests</Text>
+                  </View>
+                  <Switch
+                    value={allowFriendRequests}
+                    onValueChange={handleFriendRequestsChange}
+                    trackColor={{ false: theme.colors.surfaceMuted, true: theme.colors.accentMuted }}
+                    thumbColor={allowFriendRequests ? theme.colors.accent : theme.colors.textMuted}
+                  />
                 </View>
-                <Text style={styles.settingHint}>Others can send you friend requests</Text>
-              </View>
-              <Switch
-                value={allowFriendRequests}
-                onValueChange={setAllowFriendRequests}
-                trackColor={{ false: theme.colors.surfaceMuted, true: theme.colors.accentMuted }}
-                thumbColor={allowFriendRequests ? theme.colors.accent : theme.colors.textMuted}
-              />
-            </View>
+              </>
+            )}
           </View>
         </View>
 
@@ -232,10 +309,16 @@ export default function ProfileScreen() {
             <Text style={styles.helperText}>
               Logging out removes your Tonality session from this device but keeps Spotify linked until you disconnect above.
             </Text>
-            <Pressable style={styles.logoutButton} onPress={async () => {
-              await logout();
-              router.replace('/');
-            }}>
+            <Pressable 
+              style={({ pressed }) => [
+                styles.logoutButton,
+                pressed && styles.logoutButtonPressed,
+              ]} 
+              onPress={async () => {
+                await logout();
+                router.replace('/');
+              }}
+            >
               <Ionicons name="exit" size={18} color="#fff" />
               <Text style={styles.logoutText}>Log out</Text>
             </Pressable>
@@ -250,7 +333,11 @@ export default function ProfileScreen() {
               Deleting your account is permanent and cannot be undone. All your data, friends, and listening history will be removed.
             </Text>
             <Pressable 
-              style={[styles.deleteButton, deletingAccount && { opacity: 0.6 }]} 
+              style={({ pressed }) => [
+                styles.deleteButton, 
+                deletingAccount && { opacity: 0.6 },
+                pressed && !deletingAccount && styles.deleteButtonPressed,
+              ]} 
               disabled={deletingAccount}
               onPress={() => {
                 Alert.alert(
@@ -409,6 +496,10 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
+  primaryButtonPressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.98 }],
+  },
   primaryButtonText: {
     fontWeight: '700',
     fontSize: 15,
@@ -426,6 +517,10 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface,
     alignItems: 'center',
+  },
+  themeTogglePressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.96 }],
   },
   themeToggleActive: {
     borderColor: theme.colors.accent,
@@ -447,6 +542,10 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
+  logoutButtonPressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.98 }],
+  },
   logoutText: {
     color: '#fff',
     fontWeight: '700',
@@ -460,6 +559,10 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+  },
+  deleteButtonPressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.98 }],
   },
   settingRow: {
     flexDirection: 'row',

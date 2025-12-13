@@ -5,7 +5,7 @@ Run this after the database is created to add sample communities and polls
 import os
 from datetime import datetime, timedelta
 from sqlmodel import Session
-from database import (
+from backendScripts.database import (
     engine, Community, Poll, PollOption, 
     create_db_and_tables
 )
@@ -16,25 +16,25 @@ def seed_communities():
         Community(
             name="Indie Lovers",
             description="For fans of indie rock, indie pop, and alternative music",
-            member_count=128,
+            member_count=0,
             icon_name="musical-notes"
         ),
         Community(
             name="Lo-Fi Chill",
             description="Relaxing lo-fi beats and chill vibes",
-            member_count=256,
+            member_count=0,
             icon_name="headset"
         ),
         Community(
             name="Hip-Hop Heads",
             description="Classic and modern hip-hop discussion",
-            member_count=342,
+            member_count=0,
             icon_name="mic"
         ),
         Community(
             name="Electronic Music",
             description="EDM, house, techno, and electronic beats",
-            member_count=189,
+            member_count=0,
             icon_name="radio"
         ),
     ]
@@ -99,6 +99,14 @@ def run_seed():
     create_db_and_tables()
     
     with Session(engine) as session:
+        # Check if communities already exist
+        from sqlmodel import select
+        existing_communities = session.exec(select(Community)).all()
+        if len(existing_communities) > 0:
+            print("✅ Database already seeded, skipping...")
+            print(f"Found {len(existing_communities)} existing communities")
+            return
+        
         print("Seeding communities...")
         communities = seed_communities()
         for community in communities:

@@ -1,6 +1,6 @@
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView, RefreshControl, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
@@ -66,6 +66,25 @@ export default function CommunityScreen() {
     const styles = useMemo(() => createStyles(theme), [theme]);
     const { token } = useTonalityAuth();
     const router = useRouter();
+    
+    // Animation values
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const slideAnim = useRef(new Animated.Value(30)).current;
+
+    useEffect(() => {
+        Animated.parallel([
+            Animated.timing(fadeAnim, {
+                toValue: 1,
+                duration: 400,
+                useNativeDriver: true,
+            }),
+            Animated.timing(slideAnim, {
+                toValue: 0,
+                duration: 400,
+                useNativeDriver: true,
+            }),
+        ]).start();
+    }, [fadeAnim, slideAnim]);
 
     const loadData = useCallback(async () => {
         if (!token) return;
@@ -158,8 +177,8 @@ export default function CommunityScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
-            <ScrollView 
-                style={styles.scrollView} 
+            <Animated.ScrollView 
+                style={[styles.scrollView, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
                 contentContainerStyle={styles.scrollContent}
                 refreshControl={
                     <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.accent} />
@@ -287,7 +306,7 @@ export default function CommunityScreen() {
                         })
                     )}
                 </View>
-            </ScrollView>
+            </Animated.ScrollView>
         </SafeAreaView>
     );
 }

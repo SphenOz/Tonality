@@ -199,6 +199,25 @@ def join_community(session: Session, user_id: int, community_id: int) -> Communi
         session.rollback()
         return None
 
+def leave_community(session: Session, user_id: int, community_id: int) -> bool:
+    """Remove user from a community"""
+    statement = select(CommunityMembership).where(
+        CommunityMembership.user_id == user_id,
+        CommunityMembership.community_id == community_id
+    )
+    membership = session.exec(statement).first()
+    if membership:
+        session.delete(membership)
+        # Decrement member count
+        statement = select(Community).where(Community.id == community_id)
+        community = session.exec(statement).first()
+        if community:
+            community.member_count = max(0, community.member_count - 1)
+            session.add(community)
+        session.commit()
+        return True
+    return False
+
 # Polls Management
 def get_active_polls(session: Session, community_id: int | None = None):
     """Get active polls, optionally filtered by community"""
@@ -256,8 +275,8 @@ def vote_on_poll(session: Session, user_id: int, poll_id: int, option_id: int) -
 # Listening Activity
 def update_listening_activity(session: Session, user_id: int, track_name: str, 
                               artist_name: str, album_name: str | None = None,
-                              album_image_url: str | None = None,
-                              spotify_uri: str | None = None):
+                              album_image_url: str | None = Field(default=None),
+                              spotify_uri: str | None = Field(default=None)):
     """Update what a user is currently listening to"""
     statement = select(ListeningActivity).where(ListeningActivity.user_id == user_id)
     activity = session.exec(statement).first()

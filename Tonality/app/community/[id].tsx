@@ -10,6 +10,7 @@ import {
     getCommunityTopSongs, 
     getCommunityMembers, 
     createCommunityPlaylist,
+    leaveCommunity,
     Community,
     CommunitySong,
     CommunityMember
@@ -72,6 +73,31 @@ export default function CommunityDetailScreen() {
         } finally {
             setCreatingPlaylist(false);
         }
+    };
+
+    const handleLeaveCommunity = async () => {
+        if (!token) return;
+        
+        Alert.alert(
+            "Leave Community",
+            "Are you sure you want to leave this community?",
+            [
+                { text: "Cancel", style: "cancel" },
+                { 
+                    text: "Leave", 
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            await leaveCommunity(token, communityId);
+                            router.replace('/(tabs)/community');
+                        } catch (error) {
+                            console.error('Error leaving community:', error);
+                            Alert.alert('Error', 'Failed to leave community');
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     if (loading) {
@@ -190,6 +216,14 @@ export default function CommunityDetailScreen() {
                         ))}
                     </ScrollView>
                 </View>
+
+                {/* Leave Community Button */}
+                <Pressable 
+                    style={styles.leaveButton}
+                    onPress={handleLeaveCommunity}
+                >
+                    <Text style={styles.leaveButtonText}>Leave Community</Text>
+                </Pressable>
             </ScrollView>
         </View>
     );
@@ -382,5 +416,19 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         fontSize: 12,
         color: theme.colors.text,
         textAlign: 'center',
+    },
+    leaveButton: {
+        marginTop: 24,
+        padding: 16,
+        backgroundColor: theme.colors.surface,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: theme.colors.danger,
+        alignItems: 'center',
+    },
+    leaveButtonText: {
+        color: theme.colors.danger,
+        fontSize: 16,
+        fontWeight: '600',
     },
 });

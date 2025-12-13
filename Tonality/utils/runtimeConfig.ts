@@ -10,10 +10,13 @@ const getApiBaseUrl = (): string => {
   // In development, derive from Expo's dev server host
   const expoHost = Constants.expoConfig?.hostUri?.split(':')[0];
   if (expoHost) {
-    return `http://${expoHost}:8000`;
+    const url = `http://${expoHost}:8000`;
+    console.log('[RuntimeConfig] Derived API URL:', url);
+    return url;
   }
   
   // Fallback for web or production
+  console.log('[RuntimeConfig] Fallback API URL: http://localhost:8000');
   return 'http://localhost:8000';
 };
 

@@ -1,18 +1,38 @@
-import { View, Text, StyleSheet, Image, Pressable, Linking, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Image, Pressable, Linking, ActivityIndicator, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSpotifyAuth } from '../../hooks/useSpotifyAuth';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { fetchUserTopTracks } from '../../api/spotify';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import type { Theme } from '../../context/ThemeContext';
 
 export default function SongOfDayScreen() {
-    const { token, promptAsync } = useSpotifyAuth();
+    const { token, promptAsync, refreshToken } = useSpotifyAuth();
     const { theme } = useTheme();
     const styles = useMemo(() => createStyles(theme), [theme]);
     const [songOfDay, setSongOfDay] = useState<any>(null);
     const [loading, setLoading] = useState(false);
+    
+    // Animation values
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const scaleAnim = useRef(new Animated.Value(0.9)).current;
+    
+    useEffect(() => {
+        Animated.parallel([
+            Animated.timing(fadeAnim, {
+                toValue: 1,
+                duration: 500,
+                useNativeDriver: true,
+            }),
+            Animated.spring(scaleAnim, {
+                toValue: 1,
+                friction: 8,
+                tension: 40,
+                useNativeDriver: true,
+            }),
+        ]).start();
+    }, [fadeAnim, scaleAnim, songOfDay]);
 
     const loadSongOfDay = useCallback(async () => {
         if (!token) return;
@@ -25,12 +45,15 @@ export default function SongOfDayScreen() {
             } else {
                 setSongOfDay(null);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error loading song of day:', error);
+            if (error.message && error.message.includes('401')) {
+                await refreshToken();
+            }
         } finally {
             setLoading(false);
         }
-    }, [token]);
+    }, [token, refreshToken]);
 
     useEffect(() => {
         if (token) {
@@ -102,7 +125,7 @@ export default function SongOfDayScreen() {
                 <Text style={styles.subtitle}>Based on your listening habits</Text>
             </View>
 
-            <View style={styles.songCard}>
+            <Animated.View style={[styles.songCard, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
                 {songOfDay.album?.images?.[0]?.url && (
                     <Image
                         source={{ uri: songOfDay.album.images[0].url }}
@@ -125,7 +148,7 @@ export default function SongOfDayScreen() {
                     <Ionicons name="refresh" size={18} color={theme.colors.textMuted} />
                     <Text style={styles.refreshButtonText}>Spin again</Text>
                 </Pressable>
-            </View>
+            </Animated.View>
         </SafeAreaView>
     );
 }

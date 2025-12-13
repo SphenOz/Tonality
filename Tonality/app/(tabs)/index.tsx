@@ -1,37 +1,80 @@
-import { View, Text, StyleSheet, Pressable, ScrollView, Image } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Image, ActivityIndicator, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSpotifyAuth } from '../../hooks/useSpotifyAuth';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { fetchCurrentlyPlayingTrack, fetchUserProfile, fetchUserTopTracks } from '../../api/spotify';
 import { Ionicons } from '@expo/vector-icons';
 import { useTonalityAuth } from '../../hooks/useTonalityAuth';
 import { useTheme } from '../../context/ThemeContext';
 import type { Theme } from '../../context/ThemeContext';
+import { API_BASE_URL } from '../../utils/runtimeConfig';
+import { openInSpotify } from '../../utils/spotifyLinks';
 
-// Mock data for popular songs by genre
-const mockPopularByGenre = [
-    { genre: 'Indie', songs: [{ name: 'Little Dark Age', artist: 'MGMT' }, { name: 'Heat Waves', artist: 'Glass Animals' }] },
-    { genre: 'Electronic', songs: [{ name: 'Midnight City', artist: 'M83' }, { name: 'Strobe', artist: 'Deadmau5' }] },
-    { genre: 'Pop', songs: [{ name: 'Blinding Lights', artist: 'The Weeknd' }, { name: 'Levitating', artist: 'Dua Lipa' }] },
-];
+interface SpotifyTrack {
+    id: string;
+    name: string;
+    artist: string;
+    album?: string;
+    album_image_url?: string;
+    spotify_uri: string;
+    preview_url?: string;
+}
 
-// Mock recommended songs
-const mockRecommended = [
-    { name: 'Dissolve', artist: 'Absofacto', reason: 'Because you like MGMT' },
-    { name: 'Sweater Weather', artist: 'The Neighbourhood', reason: 'Popular with your friends' },
-    { name: 'Electric Feel', artist: 'MGMT', reason: 'Based on your top tracks' },
-];
+interface GenreWithTracks {
+    genre: string;
+    tracks: SpotifyTrack[];
+}
 
 export default function HomeScreen() {
-    const { token, promptAsync } = useSpotifyAuth();
-    const { user, isAuthenticated, loading } = useTonalityAuth();
+    const { token, promptAsync, refreshToken } = useSpotifyAuth();
+    const { user, isAuthenticated, loading, token: authToken } = useTonalityAuth();
     const { theme } = useTheme();
     const styles = useMemo(() => createStyles(theme), [theme]);
     const [profile, setProfile] = useState<any>(null);
     const [songOfDay, setSongOfDay] = useState<any>(null);
+    const [sotdError, setSotdError] = useState<string | null>(null);
     const [currentlyPlaying, setCurrentlyPlaying] = useState<any>(null);
+    const [recommendations, setRecommendations] = useState<SpotifyTrack[]>([]);
+    const [genreTracks, setGenreTracks] = useState<GenreWithTracks[]>([]);
+    const [loadingRecs, setLoadingRecs] = useState(false);
+    const [loadingGenres, setLoadingGenres] = useState(false);
     const routerInstance = useRouter();
+    
+    // Keep a ref to the latest token for use in async callbacks
+    const tokenRef = useRef(token);
+    useEffect(() => {
+        tokenRef.current = token;
+    }, [token]);
+    
+    // Animation values
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const slideAnim = useRef(new Animated.Value(30)).current;
+    
+    useEffect(() => {
+        Animated.parallel([
+            Animated.timing(fadeAnim, {
+                toValue: 1,
+                duration: 400,
+                useNativeDriver: true,
+            }),
+            Animated.timing(slideAnim, {
+                toValue: 0,
+                duration: 400,
+                useNativeDriver: true,
+            }),
+        ]).start();
+    }, [fadeAnim, slideAnim]);
+
+    // Clear all Spotify-related data when disconnected
+    useEffect(() => {
+        if (!token) {
+            setProfile(null);
+            setCurrentlyPlaying(null);
+            setRecommendations([]);
+            setGenreTracks([]);
+        }
+    }, [token]);
 
     useEffect(() => {
     if (!token) {
@@ -47,13 +90,28 @@ export default function HomeScreen() {
         .then(profile => {
             if (isMounted) setProfile(profile);
         })
-        .catch(err => {
+        .catch(async (err) => {
             console.error('Error loading profile', err);
+            if (err.message && err.message.includes('401')) {
+                const newToken = await refreshToken();
+                if (newToken && isMounted) {
+                    // Retry with new token
+                    try {
+                        const retryProfile = await fetchUserProfile(newToken);
+                        if (isMounted) setProfile(retryProfile);
+                    } catch (retryErr) {
+                        console.error('Retry failed:', retryErr);
+                    }
+                }
+            }
         });
 
-    const fetchTrack = async () => {
+    const fetchTrack = async (retryWithToken?: string) => {
+        const currentToken = retryWithToken || tokenRef.current;
+        if (!currentToken) return;
+        
         try {
-            const data = await fetchCurrentlyPlayingTrack(token);
+            const data = await fetchCurrentlyPlayingTrack(currentToken);
 
             if (!isMounted) return;
 
@@ -62,8 +120,17 @@ export default function HomeScreen() {
             } else {
                 setCurrentlyPlaying(null); // Nothing playing / 204
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error('Error fetching currently playing track:', err);
+            if (err.message && err.message.includes('401') && !retryWithToken) {
+                console.log('Token expired, attempting refresh...');
+                const newToken = await refreshToken();
+                if (newToken && isMounted) {
+                    // Retry immediately with the new token
+                    await fetchTrack(newToken);
+                    return;
+                }
+            }
             if (isMounted) setCurrentlyPlaying(null);
         }
     };
@@ -85,25 +152,80 @@ export default function HomeScreen() {
 
 
     const loadSongOfDay = useCallback(async () => {
-        if (!token) return;
+        // Song of the Day is global (same for all users) - fetched from backend
         try {
-            const data = await fetchUserTopTracks(token, 'short_term', 20);
-            if (data?.items && data.items.length > 0) {
-                const randomIndex = Math.floor(Math.random() * data.items.length);
-                setSongOfDay(data.items[randomIndex]);
+            setSotdError(null);
+            const response = await fetch(`${API_BASE_URL}/api/song-of-day`);
+            const data = await response.json();
+            
+            if (response.ok && data.track) {
+                // Transform to match expected format
+                setSongOfDay({
+                    id: data.track.id,
+                    name: data.track.name,
+                    artists: [{ name: data.track.artist }],
+                    album: { 
+                        name: data.track.album,
+                        images: data.track.album_image_url ? [{ url: data.track.album_image_url }] : []
+                    },
+                    uri: data.track.spotify_uri,
+                });
+            } else if (data.error) {
+                setSotdError(data.error);
             }
         } catch (error) {
             console.error('Error loading song of day:', error);
+            setSotdError('Failed to connect to server');
         }
-    }, [token]);
+    }, []);
+
+    const loadRecommendations = useCallback(async () => {
+        if (!authToken) return;
+        setLoadingRecs(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/spotify/recommendations`, {
+                headers: { Authorization: `Bearer ${authToken}` },
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setRecommendations(data.tracks || []);
+            }
+        } catch (error) {
+            console.error('Error loading recommendations:', error);
+        } finally {
+            setLoadingRecs(false);
+        }
+    }, [authToken]);
+
+    const loadGenreTracks = useCallback(async () => {
+        if (!authToken) return;
+        setLoadingGenres(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/spotify/genre-tracks`, {
+                headers: { Authorization: `Bearer ${authToken}` },
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setGenreTracks(data.genres || []);
+            }
+        } catch (error) {
+            console.error('Error loading genre tracks:', error);
+        } finally {
+            setLoadingGenres(false);
+        }
+    }, [authToken]);
 
     useEffect(() => {
-        if (token) {
-            loadSongOfDay();
-        } else {
-            setSongOfDay(null);
+        // Song of the Day is global - load it regardless of Spotify connection
+        loadSongOfDay();
+    }, [loadSongOfDay]);
+
+    useEffect(() => {
+        if (authToken && token) {
+            loadRecommendations();
+            loadGenreTracks();
         }
-    }, [token, loadSongOfDay]);
+    }, [authToken, token, loadRecommendations, loadGenreTracks]);
 
     useEffect(() => {
         if (!loading && !isAuthenticated) {
@@ -125,7 +247,10 @@ export default function HomeScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
-            <ScrollView contentContainerStyle={styles.scrollContent}>
+            <Animated.ScrollView 
+                contentContainerStyle={styles.scrollContent}
+                style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}
+            >
                 {/* Header */}
                 <View style={styles.header}>
                     <View style={styles.headerBadge}>
@@ -146,10 +271,7 @@ export default function HomeScreen() {
                             {currentlyPlaying && (
                                 <Pressable
                                     style={styles.nowPlayingBadge}
-                                    onPress={() => {
-                                        // You can route to a dedicated screen later if you want
-                                        // routerInstance.push('/(tabs)/currently-listening');
-                                    }}
+                                    onPress={() => openInSpotify({ id: currentlyPlaying.id, type: 'track', name: currentlyPlaying.name })}
                                 >
                                     {currentlyPlaying.album?.images?.[0]?.url && (
                                         <Image
@@ -166,7 +288,7 @@ export default function HomeScreen() {
                                             {currentlyPlaying.artists?.map((a: any) => a.name).join(', ')}
                                         </Text>
                                     </View>
-                                    <Ionicons name="play-circle" size={24} color={theme.colors.accent} />
+                                    <Ionicons name="play-circle" size={28} color={theme.colors.accent} />
                                 </Pressable>
                             )}
                         </>
@@ -175,7 +297,13 @@ export default function HomeScreen() {
                             <Text style={styles.connectHint}>
                                 Connect Spotify for personalized recommendations
                             </Text>
-                            <Pressable style={styles.primaryButton} onPress={handleConnect}>
+                            <Pressable 
+                                style={({ pressed }) => [
+                                    styles.primaryButton,
+                                    pressed && styles.primaryButtonPressed,
+                                ]} 
+                                onPress={handleConnect}
+                            >
                                 <Ionicons name="link" size={20} color="#fff" />
                                 <Text style={styles.primaryButtonText}>Link Spotify</Text>
                             </Pressable>
@@ -183,14 +311,28 @@ export default function HomeScreen() {
                     )}
                 </View>
 
-                {/* Song of the Day */}
-                {isConnected && songOfDay && (
-                    <View style={styles.section}>
-                        <View style={styles.sectionHeader}>
-                            <Ionicons name="sunny" size={18} color={theme.colors.accent} />
-                            <Text style={styles.sectionTitle}>Song of the Day</Text>
+                {/* Song of the Day - Global for all users */}
+                <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                        <Ionicons name="sunny" size={18} color={theme.colors.accent} />
+                        <Text style={styles.sectionTitle}>Song of the Day</Text>
+                    </View>
+                    
+                    {sotdError ? (
+                        <View style={[styles.sotdCard, { justifyContent: 'center', alignItems: 'center', padding: 20, minHeight: 100 }]}>
+                            <Ionicons name="warning-outline" size={24} color={theme.colors.textSecondary} />
+                            <Text style={{ color: theme.colors.textSecondary, marginTop: 8, textAlign: 'center' }}>
+                                {sotdError}
+                            </Text>
                         </View>
-                        <View style={styles.sotdCard}>
+                    ) : songOfDay ? (
+                        <Pressable 
+                            style={({ pressed }) => [
+                                styles.sotdCard,
+                                pressed && styles.sotdCardPressed,
+                            ]}
+                            onPress={() => openInSpotify({ id: songOfDay.id, type: 'track', name: songOfDay.name })}
+                        >
                             {songOfDay.album?.images?.[0]?.url && (
                                 <Image
                                     source={{ uri: songOfDay.album.images[0].url }}
@@ -202,77 +344,141 @@ export default function HomeScreen() {
                                 <Text style={styles.sotdArtist} numberOfLines={1}>
                                     {songOfDay.artists?.map((a: any) => a.name).join(', ')}
                                 </Text>
-                                <Pressable style={styles.playButton} onPress={loadSongOfDay}>
-                                    <Ionicons name="refresh" size={14} color={theme.colors.accent} />
-                                    <Text style={styles.playButtonText}>Refresh</Text>
-                                </Pressable>
+                                <View style={styles.playButtonRow}>
+                                    <Pressable style={styles.playButton} onPress={(e) => { e.stopPropagation(); openInSpotify({ id: songOfDay.id, type: 'track' }); }}>
+                                        <Ionicons name="play-circle" size={16} color={theme.colors.accent} />
+                                        <Text style={styles.playButtonText}>Play on Spotify</Text>
+                                    </Pressable>
+                                </View>
                             </View>
+                        </Pressable>
+                    ) : (
+                        <View style={[styles.sotdCard, { justifyContent: 'center', alignItems: 'center', padding: 20, minHeight: 100 }]}>
+                            <ActivityIndicator color={theme.colors.accent} />
                         </View>
+                    )}
+                </View>
+
+                {/* Popular Songs by Genre */}
+                {isConnected && (
+                    <View style={styles.section}>
+                        <View style={styles.sectionHeader}>
+                            <Ionicons name="flame" size={18} color={theme.colors.accent} />
+                            <Text style={styles.sectionTitle}>Popular in Your Genres</Text>
+                        </View>
+                        {loadingGenres ? (
+                            <View style={styles.loadingContainer}>
+                                <ActivityIndicator size="small" color={theme.colors.accent} />
+                                <Text style={styles.loadingText}>Loading your genres...</Text>
+                            </View>
+                        ) : genreTracks.length === 0 ? (
+                            <View style={styles.emptyState}>
+                                <Text style={styles.emptyStateText}>Listen to more music to see genre recommendations</Text>
+                            </View>
+                        ) : (
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                {genreTracks.map((genre, idx) => (
+                                    <View key={idx} style={styles.genreCard}>
+                                        <Text style={styles.genreName}>{genre.genre}</Text>
+                                        {genre.tracks.map((track, sIdx) => (
+                                            <Pressable 
+                                                key={sIdx} 
+                                                style={styles.genreSongRow}
+                                                onPress={() => openInSpotify({ id: track.id, type: 'track', name: track.name })}
+                                            >
+                                                {track.album_image_url && (
+                                                    <Image source={{ uri: track.album_image_url }} style={styles.genreSongImage} />
+                                                )}
+                                                <View style={styles.genreSongInfo}>
+                                                    <Text style={styles.genreSongName} numberOfLines={1}>{track.name}</Text>
+                                                    <Text style={styles.genreSongArtist} numberOfLines={1}>{track.artist}</Text>
+                                                </View>
+                                            </Pressable>
+                                        ))}
+                                    </View>
+                                ))}
+                            </ScrollView>
+                        )}
                     </View>
                 )}
 
-                {/* Popular Songs by Genre */}
-                <View style={styles.section}>
-                    <View style={styles.sectionHeader}>
-                        <Ionicons name="flame" size={18} color={theme.colors.accent} />
-                        <Text style={styles.sectionTitle}>Popular in Your Genres</Text>
-                    </View>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                        {mockPopularByGenre.map((genre, idx) => (
-                            <View key={idx} style={styles.genreCard}>
-                                <Text style={styles.genreName}>{genre.genre}</Text>
-                                {genre.songs.map((song, sIdx) => (
-                                    <View key={sIdx} style={styles.genreSongRow}>
-                                        <Text style={styles.genreSongNumber}>{sIdx + 1}</Text>
-                                        <View style={styles.genreSongInfo}>
-                                            <Text style={styles.genreSongName} numberOfLines={1}>{song.name}</Text>
-                                            <Text style={styles.genreSongArtist} numberOfLines={1}>{song.artist}</Text>
-                                        </View>
-                                    </View>
-                                ))}
-                            </View>
-                        ))}
-                    </ScrollView>
-                </View>
-
                 {/* Recommended for You */}
-                <View style={styles.section}>
-                    <View style={styles.sectionHeader}>
-                        <Ionicons name="heart" size={18} color={theme.colors.accent} />
-                        <Text style={styles.sectionTitle}>Recommended for You</Text>
-                    </View>
-                    {mockRecommended.map((song, idx) => (
-                        <View key={idx} style={styles.recommendedCard}>
-                            <View style={styles.recommendedIcon}>
-                                <Ionicons name="musical-note" size={20} color={theme.colors.accent} />
-                            </View>
-                            <View style={styles.recommendedInfo}>
-                                <Text style={styles.recommendedName}>{song.name}</Text>
-                                <Text style={styles.recommendedArtist}>{song.artist}</Text>
-                                <Text style={styles.recommendedReason}>{song.reason}</Text>
-                            </View>
-                            <Pressable style={styles.addButton}>
-                                <Ionicons name="add" size={20} color={theme.colors.accent} />
-                            </Pressable>
+                {isConnected && (
+                    <View style={styles.section}>
+                        <View style={styles.sectionHeader}>
+                            <Ionicons name="heart" size={18} color={theme.colors.accent} />
+                            <Text style={styles.sectionTitle}>Recommended for You</Text>
                         </View>
-                    ))}
-                </View>
+                        {loadingRecs ? (
+                            <View style={styles.loadingContainer}>
+                                <ActivityIndicator size="small" color={theme.colors.accent} />
+                                <Text style={styles.loadingText}>Getting recommendations...</Text>
+                            </View>
+                        ) : recommendations.length === 0 ? (
+                            <View style={styles.emptyState}>
+                                <Text style={styles.emptyStateText}>Listen to more music to get personalized recommendations</Text>
+                            </View>
+                        ) : (
+                            recommendations.slice(0, 5).map((track, idx) => (
+                                <Pressable 
+                                    key={idx} 
+                                    style={({ pressed }) => [
+                                        styles.recommendedCard,
+                                        pressed && styles.recommendedCardPressed,
+                                    ]}
+                                    onPress={() => openInSpotify({ id: track.id, type: 'track', name: track.name })}
+                                >
+                                    {track.album_image_url ? (
+                                        <Image source={{ uri: track.album_image_url }} style={styles.recommendedImage} />
+                                    ) : (
+                                        <View style={styles.recommendedIcon}>
+                                            <Ionicons name="musical-note" size={20} color={theme.colors.accent} />
+                                        </View>
+                                    )}
+                                    <View style={styles.recommendedInfo}>
+                                        <Text style={styles.recommendedName} numberOfLines={1}>{track.name}</Text>
+                                        <Text style={styles.recommendedArtist} numberOfLines={1}>{track.artist}</Text>
+                                        <Text style={styles.recommendedReason}>Based on your listening</Text>
+                                    </View>
+                                    <Pressable 
+                                        style={styles.playIconButton}
+                                        onPress={() => openInSpotify({ id: track.id, type: 'track' })}
+                                    >
+                                        <Ionicons name="play-circle" size={28} color={theme.colors.accent} />
+                                    </Pressable>
+                                </Pressable>
+                            ))
+                        )}
+                    </View>
+                )}
 
                 {/* Quick Links */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Quick Links</Text>
                     <View style={styles.quickLinksRow}>
-                        <Pressable style={styles.quickLinkCard} onPress={() => routerInstance.push('/(tabs)/community')}>
+                        <Pressable 
+                            style={({ pressed }) => [
+                                styles.quickLinkCard,
+                                pressed && styles.quickLinkCardPressed,
+                            ]} 
+                            onPress={() => routerInstance.push('/(tabs)/community')}
+                        >
                             <Ionicons name="people" size={24} color={theme.colors.accent} />
                             <Text style={styles.quickLinkText}>Community</Text>
                         </Pressable>
-                        <Pressable style={styles.quickLinkCard} onPress={() => routerInstance.push('/(tabs)/friends')}>
+                        <Pressable 
+                            style={({ pressed }) => [
+                                styles.quickLinkCard,
+                                pressed && styles.quickLinkCardPressed,
+                            ]} 
+                            onPress={() => routerInstance.push('/(tabs)/friends')}
+                        >
                             <Ionicons name="person-add" size={24} color={theme.colors.accent} />
                             <Text style={styles.quickLinkText}>Friends</Text>
                         </Pressable>
                     </View>
                 </View>
-            </ScrollView>
+            </Animated.ScrollView>
         </SafeAreaView>
     );
 }
@@ -346,6 +552,10 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         alignItems: 'center',
         gap: 8,
     },
+    primaryButtonPressed: {
+        opacity: 0.8,
+        transform: [{ scale: 0.98 }],
+    },
     primaryButtonText: {
         color: '#fff',
         fontSize: 15,
@@ -375,6 +585,10 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         gap: 16,
         alignItems: 'center',
     },
+    sotdCardPressed: {
+        backgroundColor: theme.colors.border,
+        transform: [{ scale: 0.98 }],
+    },
     sotdImage: {
         width: 80,
         height: 80,
@@ -399,14 +613,44 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         gap: 4,
         marginTop: 8,
     },
+    playButtonRow: {
+        flexDirection: 'row',
+        gap: 16,
+        marginTop: 8,
+    },
     playButtonText: {
         fontSize: 13,
         color: theme.colors.accent,
         fontWeight: '600',
     },
+    // Loading and empty states
+    loadingContainer: {
+        padding: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+    },
+    loadingText: {
+        fontSize: 13,
+        color: theme.colors.textMuted,
+    },
+    emptyState: {
+        padding: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.colors.surface,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+    },
+    emptyStateText: {
+        fontSize: 13,
+        color: theme.colors.textMuted,
+        textAlign: 'center',
+    },
     // Genre cards
     genreCard: {
-        width: 180,
+        width: 200,
         backgroundColor: theme.colors.surface,
         borderRadius: 16,
         padding: 16,
@@ -424,7 +668,16 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     genreSongRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
+        gap: 10,
+        paddingVertical: 4,
+    },
+    genreSongImage: {
+        width: 36,
+        height: 36,
+        borderRadius: 6,
+    },
+    genreSongInfo: {
+        flex: 1,
     },
     genreSongNumber: {
         fontSize: 14,
@@ -432,16 +685,13 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         color: theme.colors.textMuted,
         width: 20,
     },
-    genreSongInfo: {
-        flex: 1,
-    },
     genreSongName: {
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: '600',
         color: theme.colors.text,
     },
     genreSongArtist: {
-        fontSize: 12,
+        fontSize: 11,
         color: theme.colors.textMuted,
     },
     recommendedCard: {
@@ -449,15 +699,25 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         alignItems: 'center',
         backgroundColor: theme.colors.surface,
         borderRadius: 16,
-        padding: 14,
+        padding: 12,
         borderWidth: 1,
         borderColor: theme.colors.border,
         gap: 12,
+        marginBottom: 8,
+    },
+    recommendedCardPressed: {
+        backgroundColor: theme.colors.border,
+        transform: [{ scale: 0.98 }],
+    },
+    recommendedImage: {
+        width: 50,
+        height: 50,
+        borderRadius: 8,
     },
     recommendedIcon: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
+        width: 50,
+        height: 50,
+        borderRadius: 8,
         backgroundColor: theme.colors.accentMuted,
         alignItems: 'center',
         justifyContent: 'center',
@@ -479,6 +739,9 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         fontSize: 11,
         color: theme.colors.accent,
         fontStyle: 'italic',
+    },
+    playIconButton: {
+        padding: 4,
     },
     addButton: {
         width: 36,
@@ -502,6 +765,10 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         gap: 8,
         borderWidth: 1,
         borderColor: theme.colors.border,
+    },
+    quickLinkCardPressed: {
+        backgroundColor: theme.colors.border,
+        transform: [{ scale: 0.96 }],
     },
     quickLinkText: {
         fontSize: 14,
