@@ -1383,6 +1383,39 @@ async def get_spotify_recommendations(session=Depends(get_session), user=Depends
         )
         
         if rec_response.status_code != 200:
+            # Recommendations API failed - fallback to search API
+            # Get artist names from user's top tracks to use as search seeds
+            tracks = []
+            genres_to_search = ["pop", "hip-hop", "rock", "indie", "electronic"]
+            
+            for genre in genres_to_search[:3]:
+                search_response = await client.get(
+                    "https://api.spotify.com/v1/search",
+                    params={
+                        "q": f"genre:{genre} year:2024-2025",
+                        "type": "track",
+                        "limit": 4,
+                        "market": "US"
+                    },
+                    headers={"Authorization": f"Bearer {access_token}"}
+                )
+                
+                if search_response.status_code == 200:
+                    search_data = search_response.json()
+                    for track in search_data.get("tracks", {}).get("items", []):
+                        tracks.append({
+                            "id": track["id"],
+                            "name": track["name"],
+                            "artist": track["artists"][0]["name"] if track["artists"] else "Unknown",
+                            "album": track["album"]["name"] if track.get("album") else None,
+                            "album_image_url": track["album"]["images"][0]["url"] if track.get("album", {}).get("images") else None,
+                            "spotify_uri": track["uri"],
+                            "preview_url": track.get("preview_url")
+                        })
+            
+            if tracks:
+                return {"tracks": tracks[:10], "fallback": True}
+            
             return {"tracks": [], "error": f"Spotify API error: {rec_response.status_code}"}
         
         rec_data = rec_response.json()
