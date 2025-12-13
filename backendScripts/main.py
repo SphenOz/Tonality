@@ -1288,73 +1288,88 @@ async def get_spotify_recommendations(session=Depends(get_session), user=Depends
         return {"tracks": [], "error": "User has not linked Spotify", "spotify_linked": False}
     
     access_token = await get_spotify_access_token(user.spotify_refresh_token, user.id, session)
+    
+    # If user token doesn't work, fall back to client credentials for generic recommendations
+    use_fallback = False
     if not access_token:
-        return {"tracks": [], "error": "Spotify access expired - please reconnect", "spotify_linked": False}
+        access_token = await get_spotify_client_credentials_token()
+        use_fallback = True
+        if not access_token:
+            return {"tracks": [], "error": "Spotify access expired - please reconnect", "spotify_linked": False}
     
     async with httpx.AsyncClient() as client:
-        # First get user's top tracks for seeds
-        top_response = await client.get(
-            "https://api.spotify.com/v1/me/top/tracks",
-            params={"limit": 5, "time_range": "short_term"},
-            headers={"Authorization": f"Bearer {access_token}"}
-        )
-        
         seed_tracks = []
-        if top_response.status_code == 200:
-            top_data = top_response.json()
-            seed_tracks = [t["id"] for t in top_data.get("items", [])[:5]]
         
-        # If no short-term tracks, try medium-term
-        if not seed_tracks:
-            medium_response = await client.get(
+        # Only try to get user's top tracks if we have a user token (not fallback mode)
+        if not use_fallback:
+            # First get user's top tracks for seeds
+            top_response = await client.get(
                 "https://api.spotify.com/v1/me/top/tracks",
-                params={"limit": 5, "time_range": "medium_term"},
-                headers={"Authorization": f"Bearer {access_token}"}
-            )
-            if medium_response.status_code == 200:
-                medium_data = medium_response.json()
-                seed_tracks = [t["id"] for t in medium_data.get("items", [])[:5]]
-        
-        # If still no tracks, try long-term
-        if not seed_tracks:
-            long_response = await client.get(
-                "https://api.spotify.com/v1/me/top/tracks",
-                params={"limit": 5, "time_range": "long_term"},
-                headers={"Authorization": f"Bearer {access_token}"}
-            )
-            if long_response.status_code == 200:
-                long_data = long_response.json()
-                seed_tracks = [t["id"] for t in long_data.get("items", [])[:5]]
-        
-        if not seed_tracks:
-            # Fallback: use seed genres instead of tracks
-            # Try to get recommendations based on popular genres
-            rec_response = await client.get(
-                "https://api.spotify.com/v1/recommendations",
-                params={
-                    "seed_genres": "pop,hip-hop,rock",
-                    "limit": 10,
-                    "market": "US"
-                },
+                params={"limit": 5, "time_range": "short_term"},
                 headers={"Authorization": f"Bearer {access_token}"}
             )
             
-            if rec_response.status_code == 200:
-                rec_data = rec_response.json()
-                tracks = []
-                for track in rec_data.get("tracks", []):
-                    tracks.append({
-                        "id": track["id"],
-                        "name": track["name"],
-                        "artist": track["artists"][0]["name"] if track["artists"] else "Unknown",
-                        "album": track["album"]["name"] if track.get("album") else None,
-                        "album_image_url": track["album"]["images"][0]["url"] if track.get("album", {}).get("images") else None,
-                        "spotify_uri": track["uri"],
-                        "preview_url": track.get("preview_url")
-                    })
-                return {"tracks": tracks, "fallback": True}
+            if top_response.status_code == 200:
+                top_data = top_response.json()
+                seed_tracks = [t["id"] for t in top_data.get("items", [])[:5]]
             
-            return {"tracks": [], "error": "No listening history for recommendations", "no_history": True}
+            # If no short-term tracks, try medium-term
+            if not seed_tracks:
+                medium_response = await client.get(
+                    "https://api.spotify.com/v1/me/top/tracks",
+                    params={"limit": 5, "time_range": "medium_term"},
+                    headers={"Authorization": f"Bearer {access_token}"}
+                )
+                if medium_response.status_code == 200:
+                    medium_data = medium_response.json()
+                    seed_tracks = [t["id"] for t in medium_data.get("items", [])[:5]]
+            
+            # If still no tracks, try long-term
+            if not seed_tracks:
+                long_response = await client.get(
+                    "https://api.spotify.com/v1/me/top/tracks",
+                    params={"limit": 5, "time_range": "long_term"},
+                    headers={"Authorization": f"Bearer {access_token}"}
+                )
+                if long_response.status_code == 200:
+                    long_data = long_response.json()
+                    seed_tracks = [t["id"] for t in long_data.get("items", [])[:5]]
+        
+        if not seed_tracks:
+            # Fallback: use search API instead of recommendations (more reliable)
+            # Search for popular tracks in popular genres
+            tracks = []
+            genres_to_search = ["pop", "hip-hop", "rock"]
+            
+            for genre in genres_to_search:
+                search_response = await client.get(
+                    "https://api.spotify.com/v1/search",
+                    params={
+                        "q": f"genre:{genre} year:2024",
+                        "type": "track",
+                        "limit": 4,
+                        "market": "US"
+                    },
+                    headers={"Authorization": f"Bearer {access_token}"}
+                )
+                
+                if search_response.status_code == 200:
+                    search_data = search_response.json()
+                    for track in search_data.get("tracks", {}).get("items", []):
+                        tracks.append({
+                            "id": track["id"],
+                            "name": track["name"],
+                            "artist": track["artists"][0]["name"] if track["artists"] else "Unknown",
+                            "album": track["album"]["name"] if track.get("album") else None,
+                            "album_image_url": track["album"]["images"][0]["url"] if track.get("album", {}).get("images") else None,
+                            "spotify_uri": track["uri"],
+                            "preview_url": track.get("preview_url")
+                        })
+            
+            if tracks:
+                return {"tracks": tracks[:10], "fallback": True}
+            
+            return {"tracks": [], "error": "Could not get recommendations", "no_history": True}
         
         # Get recommendations based on seed tracks
         rec_response = await client.get(
@@ -1392,41 +1407,51 @@ async def get_genre_tracks(session=Depends(get_session), user=Depends(get_curren
         return {"genres": [], "error": "User has not linked Spotify", "spotify_linked": False}
     
     access_token = await get_spotify_access_token(user.spotify_refresh_token, user.id, session)
+    
+    # If user token doesn't work, fall back to client credentials for generic genre tracks
+    use_fallback = False
     if not access_token:
-        return {"genres": [], "error": "Spotify access expired - please reconnect", "spotify_linked": False}
+        access_token = await get_spotify_client_credentials_token()
+        use_fallback = True
+        if not access_token:
+            return {"genres": [], "error": "Spotify access expired - please reconnect", "spotify_linked": False}
     
     async with httpx.AsyncClient() as client:
-        # Get user's top artists to determine genres - try medium term first
-        artists_response = await client.get(
-            "https://api.spotify.com/v1/me/top/artists",
-            params={"limit": 20, "time_range": "medium_term"},
-            headers={"Authorization": f"Bearer {access_token}"}
-        )
+        sorted_genres = []
+        genre_counts: dict[str, int] = {}
         
-        artists_data = {}
-        if artists_response.status_code == 200:
-            artists_data = artists_response.json()
-        
-        # If no medium-term artists, try long-term
-        if not artists_data.get("items"):
-            long_response = await client.get(
+        # Only try to get user's top artists if we have a user token (not fallback mode)
+        if not use_fallback:
+            # Get user's top artists to determine genres - try medium term first
+            artists_response = await client.get(
                 "https://api.spotify.com/v1/me/top/artists",
-                params={"limit": 20, "time_range": "long_term"},
+                params={"limit": 20, "time_range": "medium_term"},
                 headers={"Authorization": f"Bearer {access_token}"}
             )
-            if long_response.status_code == 200:
-                artists_data = long_response.json()
+            
+            artists_data = {}
+            if artists_response.status_code == 200:
+                artists_data = artists_response.json()
+            
+            # If no medium-term artists, try long-term
+            if not artists_data.get("items"):
+                long_response = await client.get(
+                    "https://api.spotify.com/v1/me/top/artists",
+                    params={"limit": 20, "time_range": "long_term"},
+                    headers={"Authorization": f"Bearer {access_token}"}
+                )
+                if long_response.status_code == 200:
+                    artists_data = long_response.json()
+            
+            # Count genres
+            for artist in artists_data.get("items", []):
+                for genre in artist.get("genres", []):
+                    genre_counts[genre] = genre_counts.get(genre, 0) + 1
+            
+            # Get top 3 genres
+            sorted_genres = sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:3]
         
-        # Count genres
-        genre_counts: dict[str, int] = {}
-        for artist in artists_data.get("items", []):
-            for genre in artist.get("genres", []):
-                genre_counts[genre] = genre_counts.get(genre, 0) + 1
-        
-        # Get top 3 genres, or use fallback popular genres
-        sorted_genres = sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:3]
-        
-        # If no user genres, use popular fallback genres
+        # If no user genres or using fallback, use popular fallback genres
         if not sorted_genres:
             sorted_genres = [("pop", 1), ("hip hop", 1), ("rock", 1)]
         
