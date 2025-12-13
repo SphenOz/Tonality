@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTonalityAuth } from '../hooks/useTonalityAuth';
 import { useTheme } from '../context/ThemeContext';
 import type { Theme } from '../context/ThemeContext';
+import LoadingScreen from '../components/LoadingScreen';
 
 export default function Index() {
   const router = useRouter();
@@ -43,11 +44,7 @@ export default function Index() {
   };
 
   if (loading) {
-    return (
-      <SafeAreaView style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
-        <ActivityIndicator size="large" color={theme.colors.accent} />
-      </SafeAreaView>
-    );
+    return <LoadingScreen message="Preparing your experience..." />;
   }
 
   return (

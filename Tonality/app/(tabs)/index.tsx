@@ -10,6 +10,7 @@ import { useTheme } from '../../context/ThemeContext';
 import type { Theme } from '../../context/ThemeContext';
 import { API_BASE_URL } from '../../utils/runtimeConfig';
 import { openInSpotify } from '../../utils/spotifyLinks';
+import LoadingScreen from '../../components/LoadingScreen';
 
 interface SpotifyTrack {
     id: string;
@@ -233,7 +234,11 @@ export default function HomeScreen() {
         }
     }, [loading, isAuthenticated, routerInstance]);
 
-    if (loading || !isAuthenticated) {
+    if (loading) {
+        return <LoadingScreen message ="Loading your dashboard" />;
+    }
+
+    if (!isAuthenticated) {
         return null;
     }
 
@@ -774,7 +779,8 @@ const createStyles = (theme: Theme) => StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
         color: theme.colors.text,
-    },nowPlayingBadge: {
+    },
+    nowPlayingBadge: {
         marginTop: 10,
         flexDirection: 'row',
         alignItems: 'center',
