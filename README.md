@@ -1,39 +1,62 @@
 # Tonality
 
-**A social music sharing platform** for people who obsess over playlists. Connect with friends, discover communities, vote on polls, and share what you're listening to.
+**A social music ecosystem** that bridges your listening habits with your social circle. Tonality extends your Spotify experience by adding a layer of community interaction, allowing you to connect with friends, join genre-based communities, and discover music through social signals rather than just algorithms.
 
-## 🎵 Features
+## 🏗️ System Architecture
 
-### Core Features
-- **User Authentication**: Secure JWT-based auth with bcrypt password hashing
-- **Spotify Integration**: OAuth 2.0 PKCE flow for Spotify account linking
-- **Theme System**: Dark/Light/System adaptive themes with Spotify green accent
+Tonality is built as a modern, distributed mobile application with a clear separation of concerns:
 
-### Social Features
-- **Friends**: Add/remove friends, see what they're listening to in real-time
-- **Communities**: Join music communities (Indie Lovers, Lo-Fi Chill, etc.)
-- **Polls**: Vote on community polls for best songs/albums
-- **Listening Activity**: Share your current track with friends
+### 📱 Frontend (Mobile App)
+Built with **React Native** and **Expo**, providing a native experience on both iOS and Android.
+- **Navigation**: Uses file-based routing with `expo-router`.
+- **State Management**: React Context API for global state (Authentication, Theme, Spotify Session).
+- **UI/UX**: Custom design system with adaptive theming (Light/Dark/System) and safe-area handling.
 
-### Privacy Controls
-- Toggle online status visibility
-- Control listening activity sharing
-- Manage friend request permissions
-- Account deletion option
+### ⚡ Backend (API)
+Powered by **FastAPI (Python)**, chosen for its high performance and native async support.
+- **API Layer**: RESTful endpoints serving the mobile client.
+- **Spotify Proxy**: Handles complex Spotify interactions, token management, and caching to optimize rate limits.
+- **Business Logic**: Manages social graphs (friendships), community interactions, and recommendation algorithms.
 
-## 🏗️ Architecture
+### 💾 Data Layer
+- **Database**: **SQLModel** (combining SQLAlchemy and Pydantic) provides a robust ORM layer.
+  - Currently configured for **SQLite** for easy local development (zero-config).
+  - Scalable to **MySQL/PostgreSQL** for production.
+- **Data Models**:
+  - *Users & Auth*: Secure credential storage and Spotify token management.
+  - *Social Graph*: Bidirectional friendships and friend requests.
+  - *Communities*: Groups, memberships, and active polls.
+  - *Activity*: Real-time listening history and caching.
 
-Local dev has two parts:
+## 🎵 Key Features
 
-1) **FastAPI Backend** (`backendScripts/`) + MySQL database
-2) **Expo React Native App** (`Tonality/`)
+### 🤝 Social Discovery
+- **Real-time Activity**: See what your friends are listening to right now.
+- **Friend Management**: Send and accept friend requests to build your circle.
+- **Profile Insights**: View your friends' top artists and listening habits.
+
+### 🌍 Communities & Engagement
+- **Genre Communities**: Join groups like "Indie Lovers", "Hip Hop Heads", or "Lo-Fi Chill".
+- **Interactive Polls**: Vote on "Song of the Week" or "Best New Album" within communities.
+- **Discussion**: Connect with users who share your specific music taste.
+
+### 🎧 Enhanced Music Experience
+- **Smart Recommendations**:
+  - *For Everyone*: Trending tracks across popular genres.
+  - *For You*: Personalized recommendations based on your short, medium, and long-term listening history.
+  - *Fallback System*: Intelligent fallbacks ensure you always get music suggestions, even with a new account.
+- **Spotify Integration**: Seamlessly link your account to sync data and control playback.
+
+### 🔒 Privacy & Control
+- **Granular Privacy**: Toggle your online status and listening activity visibility.
+- **Data Control**: Full control over your account data and Spotify connection.
+- **Secure Auth**: Industry-standard JWT authentication and bcrypt password hashing.
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Python 3.10+
 - Node.js 18+
-- MySQL 8.0+
 - Spotify Developer Account (for OAuth)
 
 ### Backend Setup (FastAPI)
@@ -41,63 +64,41 @@ Local dev has two parts:
 1. **Install dependencies**
 
 ```bash
-cd /Users/prashamsheth/Desktop/Tonality
-python3 -m venv .venv
-source .venv/bin/activate
+cd Tonality
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-2. **Configure environment**
+2. **Start the server**
 
 ```bash
-cp backendScripts/.env.example backendScripts/.env
+# The server will automatically create the SQLite database and seed it with initial data
+python3 -m backendScripts.main
 ```
 
-Edit `backendScripts/.env`:
-```env
-DATABASE_URL=mysql+pymysql://USER:PASSWORD@localhost:3306/tonality
-JWT_SECRET_KEY=your-secret-key-change-in-production
-```
-
-3. **Setup database**
-
-```bash
-# Create MySQL database
-mysql -u root -p -e "CREATE DATABASE tonality;"
-
-# Run migrations and seed sample data
-python3 -m backendScripts.seed_data
-```
-
-4. **Start the server**
-
-```bash
-uvicorn backendScripts.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-Health check: `http://localhost:8000/api/`
+Health check: `http://localhost:8000/docs`
 
 ### Frontend Setup (Expo)
 
 1. **Install dependencies**
 
 ```bash
-cd /Users/prashamsheth/Desktop/Tonality/Tonality
+cd Tonality/Tonality
 npm install
 ```
 
-2. **Configure environment**
+2. **Start the app**
 
 ```bash
-cp .env.example .env.local
+npx expo start
 ```
 
-Edit `Tonality/.env.local`:
-```env
-EXPO_PUBLIC_API_BASE_URL=http://YOUR_LOCAL_IP:8000
-EXPO_PUBLIC_SPOTIFY_CLIENT_ID=your_spotify_client_id
-EXPO_PUBLIC_SPOTIFY_REDIRECT_URI=exp://localhost:8081
-```
+3. **Connect**: Scan the QR code with Expo Go (Android) or Camera (iOS).
+
+---
+
+*Built with ❤️ for music lovers.*
 
 **Note**: Use your machine's local IP (not `localhost`) so mobile devices can reach the backend.
 
